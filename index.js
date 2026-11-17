@@ -13,7 +13,7 @@ const {
     StringSelectMenuOptionBuilder,
     EmbedBuilder
 } = require('discord.js');
-const { Client: SelfClient } = require('discord.js-selfbot-v13');
+const { Client: SelfClient, RichPresence } = require('discord.js-selfbot-v13');
 
 // ═══════════════════════════════════════════════════════════════
 // HTTP Keep-Alive (Render vb. için)
@@ -83,6 +83,24 @@ function getUptime() {
     return `${mins}dk ${secs}sn`;
 }
 
+// RPC Ayarlama Fonksiyonu ("powered by Fronzyy")
+function setCustomRPC(client) {
+    try {
+        const rpc = new RichPresence(client)
+            .setType('PLAYING')
+            .setName('powered by Fronzyy')
+            .setDetails('powered by Fronzyy')
+            .setState('powered by Fronzyy');
+        
+        client.user.setPresence({ activities: [rpc] });
+    } catch (e) {
+        // Alternatif düz status (RPC hata verirse)
+        client.user.setPresence({
+            activities: [{ name: 'powered by Fronzyy', type: 'PLAYING' }]
+        });
+    }
+}
+
 async function connectSelfBot(account, index, specificChannelId = null) {
     reloadDatabase();
     const freshAccount = database.accounts[index] || account;
@@ -94,6 +112,11 @@ async function connectSelfBot(account, index, specificChannelId = null) {
 
     const client = new SelfClient({ checkUpdate: false });
 
+    client.on('ready', () => {
+        console.log(`[BAĞLANDI] ${client.user.tag}`);
+        setCustomRPC(client);
+    });
+
     try {
         await client.login(freshAccount.token);
         freshAccount.username = client.user.tag;
@@ -103,7 +126,6 @@ async function connectSelfBot(account, index, specificChannelId = null) {
         saveDatabase();
 
         selfClients.set(freshAccount.token, { client, account: freshAccount, index });
-        console.log(`[BAĞLANDI] ${client.user.tag}`);
 
         // Ses kanalına giriş (mikrofon ve kulaklık kapalı)
         if (targetChannel) {
@@ -144,6 +166,7 @@ async function connectSelfBot(account, index, specificChannelId = null) {
                                 self_video: false
                             }
                         });
+                        setCustomRPC(client);
                         console.log(`[SES] ${freshAccount.username} yeniden bağlandı`);
                     } catch (e) {
                         console.log(`[YENİDEN BAĞLANMA HATASI] ${freshAccount.username}`);
@@ -239,8 +262,7 @@ bot.on('messageCreate', async (message) => {
 
         const row2 = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('remove_token').setLabel('Token Sil').setStyle(ButtonStyle.Danger).setEmoji('🗑️'),
-            new ButtonBuilder().setCustomId('stop_all').setLabel('Tümünü Durdur').setStyle(ButtonStyle.Danger).setEmoji('⏹️'),
-            new ButtonBuilder().setCustomId('refresh').setLabel('Yenile').setStyle(ButtonStyle.Secondary).setEmoji('🔃')
+            new ButtonBuilder().setCustomId('stop_all').setLabel('Tümünü Durdur').setStyle(ButtonStyle.Danger).setEmoji('🗑️')
         );
 
         await message.reply({ embeds: [embed], components: [row1, row2] });
@@ -375,25 +397,6 @@ bot.on('interactionCreate', async (interaction) => {
             await interaction.reply({ content: '⏹️ Tüm hesaplar durduruluyor...', ephemeral: true });
             await disconnectAll();
             await interaction.editReply('✅ Tüm hesapların bağlantısı kesildi ve durduruldu.');
-        }
-
-        else if (interaction.customId === 'refresh') {
-            const active = selfClients.size;
-            const total = database.accounts.length;
-
-            const embed = new EmbedBuilder()
-                .setColor(0x5865F2)
-                .setTitle('🖥️ Token Yönetim Paneli')
-                .setDescription(
-                    `🟢 **Çevrimiçi:** ${active}\n` +
-                    `🔴 **Çevrimdışı:** ${total - active}\n` +
-                    `📊 **Toplam:** ${total}\n` +
-                    `⏱️ **Çalışma Süresi:** ${getUptime()}`
-                )
-                .setFooter({ text: 'Ses & Token Yönetim Sistemi' })
-                .setTimestamp();
-
-            await interaction.update({ embeds: [embed] });
         }
     }
 

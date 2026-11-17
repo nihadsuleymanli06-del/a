@@ -1,0 +1,16 @@
+{
+  "name": "fronzyy-token-bot",
+  "version": "1.0.0",
+  "description": "Multi token selfbot voice manager",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "discord.js-selfbot-v13": "^3.4.2"
+  }
+}

@@ -553,14 +553,24 @@ bot.on('interactionCreate', async (interaction) => {
             for (const token of tokens) {
                 if (database.accounts.find(a => a.token === token)) continue;
 
-                database.accounts.push({
-                    token,
-                    voiceChannelId: null,
-                    username: null,
-                    displayName: null,
-                    addedBy: interaction.user.id
-                });
-                added++;
+                try {
+                    const testClient = new SelfClient({ checkUpdate: false });
+                    await testClient.login(token);
+                    const username = testClient.user.username;
+                    const displayName = testClient.user.displayName || username;
+                    testClient.destroy();
+
+                    database.accounts.push({
+                        token,
+                        voiceChannelId: null,
+                        username,
+                        displayName,
+                        addedBy: interaction.user.id
+                    });
+                    added++;
+                } catch (e) {
+                    // Geçersiz tokenleri atla
+                }
             }
             saveDatabase();
 

@@ -13,7 +13,7 @@ const {
     StringSelectMenuOptionBuilder,
     EmbedBuilder
 } = require('discord.js');
-const { Client: SelfClient, RichPresence } = require('discord.js-selfbot-v13');
+const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
 // ═══════════════════════════════════════════════════════════════
 // HTTP Keep-Alive (Render vb. için)
@@ -83,14 +83,20 @@ function getUptime() {
     return `${mins}dk ${secs}sn`;
 }
 
-// RPC Ayarlama Fonksiyonu ("powered by Fronzyy")
-bot.user.setPresence({
-    activities: [{
-        name: 'powered by Fronzyy',
-        type: 0 // PLAYING
-    }],
-    status: 'online'
-});
+// Çalışan RPC Ayarlama Fonksiyonu
+function setCustomRPC(client) {
+    try {
+        client.user.setPresence({
+            activities: [{
+                name: 'powered by Fronzyy',
+                type: 0 // PLAYING
+            }],
+            status: 'online'
+        });
+    } catch (e) {
+        console.log(`[RPC HATA]: ${e.message}`);
+    }
+}
 
 async function connectSelfBot(account, index, specificChannelId = null) {
     reloadDatabase();
@@ -397,7 +403,7 @@ bot.on('interactionCreate', async (interaction) => {
                 return interaction.reply({ content: '❌ Hesap əlavə etməmisən', ephemeral: true });
             }
 
-            await interaction.reply({ content: '⏹️ Hesablarınız durduruluyor...', ephemeral: true });
+            await interaction.reply({ content: '⏹️ Hesaplarınız durduruluyor...', ephemeral: true });
 
             for (const acc of userAccounts) {
                 await disconnectSelfBot(acc.token);

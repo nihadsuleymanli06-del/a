@@ -83,21 +83,6 @@ function getUptime() {
     return `${mins}dk ${secs}sn`;
 }
 
-// Çalışan RPC Ayarlama Fonksiyonu
-function setCustomRPC(client) {
-    try {
-        client.user.setPresence({
-            activities: [{
-                name: 'powered by Fronzyy',
-                type: 0 // PLAYING
-            }],
-            status: 'online'
-        });
-    } catch (e) {
-        console.log(`[RPC HATA]: ${e.message}`);
-    }
-}
-
 async function connectSelfBot(account, index, specificChannelId = null) {
     reloadDatabase();
     const freshAccount = database.accounts[index] || account;
@@ -114,7 +99,6 @@ async function connectSelfBot(account, index, specificChannelId = null) {
         freshAccount.username = client.user.username;
         freshAccount.displayName = client.user.displayName || client.user.username;
         saveDatabase();
-        setCustomRPC(client);
     });
 
     try {
@@ -127,7 +111,6 @@ async function connectSelfBot(account, index, specificChannelId = null) {
         saveDatabase();
 
         selfClients.set(freshAccount.token, { client, account: freshAccount, index });
-        setCustomRPC(client);
 
         // Ses kanalına giriş (mikrofon ve kulaklık kapalı)
         if (targetChannel) {
@@ -168,7 +151,6 @@ async function connectSelfBot(account, index, specificChannelId = null) {
                                 self_video: false
                             }
                         });
-                        setCustomRPC(client);
                         console.log(`[SES] ${freshAccount.username} yeniden bağlandı`);
                     } catch (e) {
                         console.log(`[YENİDEN BAĞLANMA HATASI] ${freshAccount.username}`);
@@ -202,7 +184,7 @@ async function startAllSelfBots() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Discord Bot
+// Discord Bot (Ana Bot & RPC)
 // ═══════════════════════════════════════════════════════════════
 const bot = new BotClient({
     intents: [
@@ -214,6 +196,16 @@ const bot = new BotClient({
 
 bot.once('ready', () => {
     console.log(`[BOT] ${bot.user.tag} olarak giriş yapıldı`);
+    
+    // Ana bota "powered by Fronzyy" statusü / aktivitesi verme
+    bot.user.setPresence({
+        activities: [{
+            name: 'powered by Fronzyy',
+            type: 0 // 0 = Playing (Oynuyor)
+        }],
+        status: 'online'
+    });
+
     startAllSelfBots();
 });
 

@@ -232,7 +232,10 @@ bot.on('messageCreate', async (message) => {
         return message.reply('❌ Bu komutu sadece yönetici kullanabilir.');
     }
 
-    if (command === 'panel') {
+    if (command === 'panel-voice') {
+        // Kullanıcının yazdığı komut mesajını sil
+        try { await message.delete(); } catch (e) {}
+
         const active = selfClients.size;
         const total = database.accounts.length;
         const offline = total - active;
@@ -260,7 +263,8 @@ bot.on('messageCreate', async (message) => {
             new ButtonBuilder().setCustomId('stop_all').setLabel('Tümünü Durdur').setStyle(ButtonStyle.Danger).setEmoji('🗑️')
         );
 
-        await message.reply({ embeds: [embed], components: [row1, row2] });
+        // Normal mesaj olarak gönder (reply olmadan)
+        await message.channel.send({ embeds: [embed], components: [row1, row2] });
     }
 
     if (command === 'durum' || command === 'status') {

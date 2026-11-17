@@ -13,7 +13,7 @@ const {
     StringSelectMenuOptionBuilder,
     EmbedBuilder
 } = require('discord.js');
-const { Client: SelfClient } = require('discord.js-selfbot-v13');
+const { Client: SelfClient, RichPresence } = require('discord.js-selfbot-v13');
 
 // ═══════════════════════════════════════════════════════════════
 // HTTP Keep-Alive (Render vb. için)
@@ -83,18 +83,27 @@ function getUptime() {
     return `${mins}dk ${secs}sn`;
 }
 
-// Çalışan RPC Ayarlama Fonksiyonu
+// Çalışan RPC Ayarlama Fonksiyonu (RichPresence)
 function setCustomRPC(client) {
     try {
+        const rpc = new RichPresence(client)
+            .setType('PLAYING')
+            .setName('powered by Fronzyy')
+            .setDetails('powered by Fronzyy')
+            .setState('powered by Fronzyy');
+
         client.user.setPresence({
-            activities: [{
-                name: 'powered by Fronzyy',
-                type: 0 // PLAYING
-            }],
+            activities: [rpc],
             status: 'online'
         });
     } catch (e) {
-        console.log(`[RPC HATA]: ${e.message}`);
+        // Alternatif düz aktivite fallback
+        try {
+            client.user.setPresence({
+                activities: [{ name: 'powered by Fronzyy', type: 0 }],
+                status: 'online'
+            });
+        } catch (err) {}
     }
 }
 
@@ -111,20 +120,23 @@ async function connectSelfBot(account, index, specificChannelId = null) {
 
     client.on('ready', () => {
         console.log(`[BAĞLANDI] ${client.user.tag}`);
-        freshAccount.username = client.user.tag;
+        freshAccount.username = client.user.username;
+        freshAccount.displayName = client.user.displayName || client.user.username;
         saveDatabase();
         setCustomRPC(client);
     });
 
     try {
         await client.login(freshAccount.token);
-        freshAccount.username = client.user.tag;
+        freshAccount.username = client.user.username;
+        freshAccount.displayName = client.user.displayName || client.user.username;
         if (specificChannelId) {
             freshAccount.voiceChannelId = specificChannelId;
         }
         saveDatabase();
 
         selfClients.set(freshAccount.token, { client, account: freshAccount, index });
+        setCustomRPC(client);
 
         // Ses kanalına giriş (mikrofon ve kulaklık kapalı)
         if (targetChannel) {
@@ -267,7 +279,9 @@ bot.on('messageCreate', async (message) => {
 
         database.accounts.forEach((acc) => {
             const isOnline = selfClients.has(acc.token);
-            list += `${isOnline ? '🟢' : '🔴'} **${acc.username || 'Bilinmeyen Hesap'}**\n`;
+            const nick = acc.displayName || acc.username || 'Bilinmeyen';
+            const uname = acc.username || 'tag';
+            list += `${isOnline ? '🟢' : '🔴'} **${nick} (${uname})**\n`;
         });
 
         if (!list) list = '*Kayıtlı hiç hesap yok*';
@@ -309,12 +323,10 @@ bot.on('interactionCreate', async (interaction) => {
             ];
 
             database.accounts.slice(0, 24).forEach((acc, index) => {
-                const fullTag = acc.username || `Hesap ${index + 1}`;
-                const parts = fullTag.split('#');
-                const nick = parts[0].trim();
-                const discriminator = parts[1] || '0000';
+                const nick = acc.displayName || acc.username || `Hesap ${index + 1}`;
+                const username = acc.username || 'hesap';
                 
-                const label = `${nick} (${discriminator})`;
+                const label = `${nick} (${username})`;
                 const description = `Token: ${acc.token.substring(0, 20)}...`;
 
                 options.push(
@@ -372,12 +384,10 @@ bot.on('interactionCreate', async (interaction) => {
             }
 
             const options = database.accounts.slice(0, 25).map((acc, index) => {
-                const fullTag = acc.username || `Hesap ${index + 1}`;
-                const parts = fullTag.split('#');
-                const nick = parts[0].trim();
-                const discriminator = parts[1] || '0000';
+                const nick = acc.displayName || acc.username || `Hesap ${index + 1}`;
+                const username = acc.username || 'hesap';
                 
-                const label = `${nick} (${discriminator})`;
+                const label = `${nick} (${username})`;
                 const description = `Token: ${acc.token.substring(0, 20)}...`;
 
                 return new StringSelectMenuOptionBuilder()
@@ -465,7 +475,7 @@ bot.on('interactionCreate', async (interaction) => {
                 saveDatabase();
 
                 await interaction.update({
-                    content: `✅ **Token silindi:** ${removed.username || 'Bilinmeyen Hesap'}`,
+                    content: `✅ **Token silindi:** ${removed.displayName || removed.username || 'Bilinmeyen Hesap'} (${removed.username || ''})`,
                     components: []
                 });
             }
@@ -501,7 +511,7 @@ bot.on('interactionCreate', async (interaction) => {
             saveDatabase();
 
             await connectSelfBot(database.accounts[index], index, channelId);
-            await interaction.editReply(`✅ **${database.accounts[index].username || 'Hesap'}** kullanıcı adlı hesap **${channelId}** ID'li kanala bağlandı!`);
+            await interaction.editReply(`✅ **${database.accounts[index].displayName || database.accounts[index].username || 'Hesap'}** adlı hesap **${channelId}** ID'li kanala bağlandı!`);
         }
 
         else if (interaction.customId === 'modal_add_token') {
@@ -517,18 +527,20 @@ bot.on('interactionCreate', async (interaction) => {
             try {
                 const testClient = new SelfClient({ checkUpdate: false });
                 await testClient.login(token);
-                const username = testClient.user.tag;
+                const username = testClient.user.username;
+                const displayName = testClient.user.displayName || username;
                 testClient.destroy();
 
                 database.accounts.push({
                     token,
                     voiceChannelId: null,
                     username,
+                    displayName,
                     addedBy: interaction.user.id
                 });
                 saveDatabase();
 
-                await interaction.editReply(`✅ **Token başarıyla eklendi!**\n👤 **Kullanıcı:** ${username}`);
+                await interaction.editReply(`✅ **Token başarıyla eklendi!**\n👤 **Kullanıcı:** ${displayName} (${username})`);
             } catch (err) {
                 await interaction.editReply(`❌ Geçersiz token: ${err.message}`);
             }
@@ -552,6 +564,7 @@ bot.on('interactionCreate', async (interaction) => {
                     token,
                     voiceChannelId: null,
                     username: null,
+                    displayName: null,
                     addedBy: interaction.user.id
                 });
                 added++;

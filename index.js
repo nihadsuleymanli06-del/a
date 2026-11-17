@@ -84,13 +84,21 @@ function getUptime() {
 }
 
 // RPC Ayarlama Fonksiyonu ("powered by Fronzyy")
-bot.user.setPresence({
-    activities: [{
-        name: 'powered by Fronzyy',
-        type: 0 // PLAYING
-    }],
-    status: 'online'
-});
+function setCustomRPC(client) {
+    try {
+        const rpc = new RichPresence(client)
+            .setType('PLAYING')
+            .setName('powered by Fronzyy')
+            .setDetails('powered by Fronzyy')
+            .setState('powered by Fronzyy');
+        
+        client.user.setPresence({ activities: [rpc] });
+    } catch (e) {
+        client.user.setPresence({
+            activities: [{ name: 'powered by Fronzyy', type: 'PLAYING' }]
+        });
+    }
+}
 
 async function connectSelfBot(account, index, specificChannelId = null) {
     reloadDatabase();
@@ -105,6 +113,8 @@ async function connectSelfBot(account, index, specificChannelId = null) {
 
     client.on('ready', () => {
         console.log(`[BAĞLANDI] ${client.user.tag}`);
+        freshAccount.username = client.user.tag;
+        saveDatabase();
         setCustomRPC(client);
     });
 
@@ -293,22 +303,37 @@ bot.on('interactionCreate', async (interaction) => {
                 return interaction.reply({ content: '❌ Sistemde ekli hesap bulunmuyor.', ephemeral: true });
             }
 
+            const options = [
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('Tümünü Bağla')
+                    .setDescription('Kayıtlı bütün hesapları sese bağla')
+                    .setValue('all_accounts')
+            ];
+
+            database.accounts.slice(0, 24).forEach((acc, index) => {
+                const fullTag = acc.username || `Hesap ${index + 1}`;
+                const parts = fullTag.split('#');
+                const nick = parts[0].trim();
+                const discriminator = parts[1] || '0000';
+                
+                const label = `${nick} (${discriminator})`;
+                const description = `Token: ${acc.token.substring(0, 20)}...`;
+
+                options.push(
+                    new StringSelectMenuOptionBuilder()
+                        .setLabel(label.substring(0, 100))
+                        .setDescription(description.substring(0, 100))
+                        .setValue(`account_${index}`)
+                );
+            });
+
             const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId('select_connect_target')
-                .setPlaceholder('Bağlantı türünü seçin...')
-                .addOptions(
-                    new StringSelectMenuOptionBuilder()
-                        .setLabel('Bütün Hesaplar')
-                        .setDescription('Kayıtlı tüm hesapları sese bağla')
-                        .setValue('all_accounts'),
-                    new StringSelectMenuOptionBuilder()
-                        .setLabel('Seçtiğimiz Hesaba Bas')
-                        .setDescription('Listeden seçeceğiniz tek bir hesabı sese bağla')
-                        .setValue('single_account')
-                );
+                .setPlaceholder('Hesap seçimi yapın...')
+                .addOptions(options);
 
             const row = new ActionRowBuilder().addComponents(selectMenu);
-            await interaction.reply({ content: '🔊 Sese bağlanmak istediğiniz hedefi seçin:', components: [row], ephemeral: true });
+            await interaction.reply({ content: '🔊 Sese bağlanılacak hesabı veya tümünü seçin:', components: [row], ephemeral: true });
         }
 
         else if (interaction.customId === 'add_token') {
@@ -348,19 +373,28 @@ bot.on('interactionCreate', async (interaction) => {
                 return interaction.reply({ content: '❌ Silinecek kayıtlı hesap yok.', ephemeral: true });
             }
 
-            const modal = new ModalBuilder()
-                .setCustomId('modal_remove_token')
-                .setTitle('Token Sil')
-                .addComponents(
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId('token_to_remove')
-                            .setLabel('Token (ilk 20 karakteri yazmanız yeterli)')
-                            .setStyle(TextInputStyle.Short)
-                            .setRequired(true)
-                    )
-                );
-            await interaction.showModal(modal);
+            const options = database.accounts.slice(0, 25).map((acc, index) => {
+                const fullTag = acc.username || `Hesap ${index + 1}`;
+                const parts = fullTag.split('#');
+                const nick = parts[0].trim();
+                const discriminator = parts[1] || '0000';
+                
+                const label = `${nick} (${discriminator})`;
+                const description = `Token: ${acc.token.substring(0, 20)}...`;
+
+                return new StringSelectMenuOptionBuilder()
+                    .setLabel(label.substring(0, 100))
+                    .setDescription(description.substring(0, 100))
+                    .setValue(`remove_${index}`);
+            });
+
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('select_remove_account')
+                .setPlaceholder('Silinecek hesabı seçin...')
+                .addOptions(options);
+
+            const row = new ActionRowBuilder().addComponents(selectMenu);
+            await interaction.reply({ content: '🗑️ Lütfen silmek istediğiniz hesabı seçin:', components: [row], ephemeral: true });
         }
 
         else if (interaction.customId === 'stop_all') {
@@ -400,39 +434,43 @@ bot.on('interactionCreate', async (interaction) => {
                         )
                     );
                 await interaction.showModal(modal);
-            } else if (choice === 'single_account') {
-                const options = database.accounts.slice(0, 25).map((acc, index) => 
-                    new StringSelectMenuOptionBuilder()
-                        .setLabel(acc.username || `Hesap ${index + 1}`)
-                        .setDescription(acc.token.substring(0, 20) + '...')
-                        .setValue(index.toString())
-                );
-
-                const selectAccountMenu = new StringSelectMenuBuilder()
-                    .setCustomId('select_specific_account')
-                    .setPlaceholder('Bağlanılacak hesabı seçin...')
-                    .addOptions(options);
-
-                const row = new ActionRowBuilder().addComponents(selectAccountMenu);
-                await interaction.update({ content: '👤 Lütfen sese bağlanmasını istediğiniz hesabı seçin:', components: [row] });
+            } else if (choice.startsWith('account_')) {
+                const index = choice.replace('account_', '');
+                const modal = new ModalBuilder()
+                    .setCustomId(`modal_connect_single_${index}`)
+                    .setTitle('Hesabı Sese Bağla')
+                    .addComponents(
+                        new ActionRowBuilder().addComponents(
+                            new TextInputBuilder()
+                                .setCustomId('channel_input')
+                                .setLabel('Bağlanılacak Ses Kanalı ID')
+                                .setStyle(TextInputStyle.Short)
+                                .setRequired(true)
+                        )
+                    );
+                await interaction.showModal(modal);
             }
         }
 
-        else if (interaction.customId === 'select_specific_account') {
-            const indexStr = interaction.values[0];
-            const modal = new ModalBuilder()
-                .setCustomId(`modal_connect_single_${indexStr}`)
-                .setTitle('Hesabı Sese Bağla')
-                .addComponents(
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId('channel_input')
-                            .setLabel('Bağlanılacak Ses Kanalı ID')
-                            .setStyle(TextInputStyle.Short)
-                            .setRequired(true)
-                    )
-                );
-            await interaction.showModal(modal);
+        else if (interaction.customId === 'select_remove_account') {
+            const choice = interaction.values[0];
+            if (choice.startsWith('remove_')) {
+                const index = parseInt(choice.replace('remove_', ''));
+                const removed = database.accounts[index];
+
+                if (!removed) {
+                    return interaction.reply({ content: '❌ Hesap bulunamadı.', ephemeral: true });
+                }
+
+                await disconnectSelfBot(removed.token);
+                database.accounts.splice(index, 1);
+                saveDatabase();
+
+                await interaction.update({
+                    content: `✅ **Token silindi:** ${removed.username || 'Bilinmeyen Hesap'}`,
+                    components: []
+                });
+            }
         }
     }
 
@@ -523,25 +561,6 @@ bot.on('interactionCreate', async (interaction) => {
             saveDatabase();
 
             await interaction.editReply(`✅ **${added} adet token başarıyla eklendi.**`);
-        }
-
-        else if (interaction.customId === 'modal_remove_token') {
-            const partial = interaction.fields.getTextInputValue('token_to_remove').trim();
-            const index = database.accounts.findIndex(acc => acc.token.startsWith(partial));
-
-            if (index === -1) {
-                return interaction.reply({ content: '❌ Girilen bilgilere ait token bulunamadı.', ephemeral: true });
-            }
-
-            const removed = database.accounts[index];
-            await disconnectSelfBot(removed.token);
-            database.accounts.splice(index, 1);
-            saveDatabase();
-
-            await interaction.reply({
-                content: `✅ **Token silindi:** ${removed.username || 'Bilinmeyen Hesap'}`,
-                ephemeral: true
-            });
         }
     }
 });

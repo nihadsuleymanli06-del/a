@@ -94,7 +94,6 @@ function setCustomRPC(client) {
         
         client.user.setPresence({ activities: [rpc] });
     } catch (e) {
-        // Alternatif düz status (RPC hata verirse)
         client.user.setPresence({
             activities: [{ name: 'powered by Fronzyy', type: 'PLAYING' }]
         });
@@ -189,20 +188,13 @@ async function disconnectSelfBot(token) {
     }
 }
 
-async function disconnectAll() {
-    console.log('[DURDUR] Tüm hesaplar durduruluyor...');
-    for (const [, data] of selfClients) {
-        try { data.client.destroy(); } catch (e) {}
-    }
-    selfClients.clear();
-    console.log('[DURDUR] Tüm hesaplar durduruldu');
-}
-
 async function startAllSelfBots() {
     console.log(`[BAŞLAT] ${database.accounts.length} hesap başlatılıyor...`);
     for (let i = 0; i < database.accounts.length; i++) {
-        await connectSelfBot(database.accounts[i], i);
-        await new Promise(r => setTimeout(r, 1500)); // Rate limit koruması
+        if (database.accounts[i].voiceChannelId) {
+            await connectSelfBot(database.accounts[i], i);
+            await new Promise(r => setTimeout(r, 1500)); // Rate limit koruması
+        }
     }
 }
 
@@ -338,13 +330,6 @@ bot.on('interactionCreate', async (interaction) => {
                             .setLabel('Discord Token')
                             .setStyle(TextInputStyle.Short)
                             .setRequired(true)
-                    ),
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId('channel_input')
-                            .setLabel('Ses Kanalı ID')
-                            .setStyle(TextInputStyle.Short)
-                            .setRequired(true)
                     )
                 );
             await interaction.showModal(modal);
@@ -360,13 +345,6 @@ bot.on('interactionCreate', async (interaction) => {
                             .setCustomId('tokens_input')
                             .setLabel('Her satıra 1 token gelecek şekilde yazın')
                             .setStyle(TextInputStyle.Paragraph)
-                            .setRequired(true)
-                    ),
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId('channel_input')
-                            .setLabel('Ses Kanalı ID')
-                            .setStyle(TextInputStyle.Short)
                             .setRequired(true)
                     )
                 );
@@ -394,9 +372,20 @@ bot.on('interactionCreate', async (interaction) => {
         }
 
         else if (interaction.customId === 'stop_all') {
-            await interaction.reply({ content: '⏹️ Tüm hesaplar durduruluyor...', ephemeral: true });
-            await disconnectAll();
-            await interaction.editReply('✅ Tüm hesapların bağlantısı kesildi ve durduruldu.');
+            const userId = interaction.user.id;
+            const userAccounts = database.accounts.filter(acc => acc.addedBy === userId);
+
+            if (userAccounts.length === 0) {
+                return interaction.reply({ content: '❌ Hesap əlavə etməmisən', ephemeral: true });
+            }
+
+            await interaction.reply({ content: '⏹️ Hesablarınız durduruluyor...', ephemeral: true });
+
+            for (const acc of userAccounts) {
+                await disconnectSelfBot(acc.token);
+            }
+
+            await interaction.editReply('✅ Sizin əlavə etdiyiniz bütün hesablar durduruldu.');
         }
     }
 
@@ -489,7 +478,6 @@ bot.on('interactionCreate', async (interaction) => {
 
         else if (interaction.customId === 'modal_add_token') {
             const token = interaction.fields.getTextInputValue('token_input').trim();
-            const channelId = interaction.fields.getTextInputValue('channel_input').trim();
 
             if (database.accounts.find(a => a.token === token)) {
                 return interaction.reply({ content: '❌ Bu token sistemde zaten ekli!', ephemeral: true });
@@ -506,16 +494,13 @@ bot.on('interactionCreate', async (interaction) => {
 
                 database.accounts.push({
                     token,
-                    voiceChannelId: channelId,
+                    voiceChannelId: null,
                     username,
                     addedBy: interaction.user.id
                 });
                 saveDatabase();
 
-                const index = database.accounts.length - 1;
-                connectSelfBot(database.accounts[index], index);
-
-                await interaction.editReply(`✅ **Token başarıyla eklendi!**\n👤 **Kullanıcı:** ${username}\n🔗 **Kanal ID:** ${channelId}`);
+                await interaction.editReply(`✅ **Token başarıyla eklendi!**\n👤 **Kullanıcı:** ${username}`);
             } catch (err) {
                 await interaction.editReply(`❌ Geçersiz token: ${err.message}`);
             }
@@ -523,7 +508,6 @@ bot.on('interactionCreate', async (interaction) => {
 
         else if (interaction.customId === 'modal_add_multi_token') {
             const tokensRaw = interaction.fields.getTextInputValue('tokens_input');
-            const channelId = interaction.fields.getTextInputValue('channel_input').trim();
             const tokens = tokensRaw.split('\n').map(t => t.trim()).filter(t => t.length > 0);
 
             if (tokens.length === 0) {
@@ -538,7 +522,7 @@ bot.on('interactionCreate', async (interaction) => {
 
                 database.accounts.push({
                     token,
-                    voiceChannelId: channelId,
+                    voiceChannelId: null,
                     username: null,
                     addedBy: interaction.user.id
                 });
@@ -546,10 +530,7 @@ bot.on('interactionCreate', async (interaction) => {
             }
             saveDatabase();
 
-            // Bağlantıları başlat
-            await startAllSelfBots();
-
-            await interaction.editReply(`✅ **${added} adet token eklendi** ve ses kanalına bağlanmaya başlandı.`);
+            await interaction.editReply(`✅ **${added} adet token başarıyla eklendi.**`);
         }
 
         else if (interaction.customId === 'modal_remove_token') {
@@ -578,7 +559,9 @@ bot.on('interactionCreate', async (interaction) => {
 // ═══════════════════════════════════════════════════════════════
 process.on('SIGINT', async () => {
     console.log('\n[KAPANIŞ] Bot kapatılıyor...');
-    await disconnectAll();
+    for (const [, data] of selfClients) {
+        try { data.client.destroy(); } catch (e) {}
+    }
     bot.destroy();
     process.exit(0);
 });

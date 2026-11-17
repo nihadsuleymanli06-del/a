@@ -1,4 +1,4 @@
 {
-  "botToken": "BOT_TOKEN_BURAYA",
-  "adminId": "ADMIN_DISCORD_ID_BURAYA"
+  "botToken": "DISCORD_TOKEN",
+  "adminId": "ADMIN_ID"
 }

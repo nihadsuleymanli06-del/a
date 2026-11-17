@@ -84,21 +84,13 @@ function getUptime() {
 }
 
 // RPC Ayarlama Fonksiyonu ("powered by Fronzyy")
-function setCustomRPC(client) {
-    try {
-        const rpc = new RichPresence(client)
-            .setType('PLAYING')
-            .setName('powered by Fronzyy')
-            .setDetails('powered by Fronzyy')
-            .setState('powered by Fronzyy');
-        
-        client.user.setPresence({ activities: [rpc] });
-    } catch (e) {
-        client.user.setPresence({
-            activities: [{ name: 'powered by Fronzyy', type: 'PLAYING' }]
-        });
-    }
-}
+bot.user.setPresence({
+    activities: [{
+        name: 'powered by Fronzyy',
+        type: 0 // PLAYING
+    }],
+    status: 'online'
+});
 
 async function connectSelfBot(account, index, specificChannelId = null) {
     reloadDatabase();

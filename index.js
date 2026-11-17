@@ -13,7 +13,7 @@ const {
     StringSelectMenuOptionBuilder,
     EmbedBuilder
 } = require('discord.js');
-const { Client: SelfClient, RichPresence } = require('discord.js-selfbot-v13');
+const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
 // ═══════════════════════════════════════════════════════════════
 // HTTP Keep-Alive (Render vb. için)
@@ -83,27 +83,18 @@ function getUptime() {
     return `${mins}dk ${secs}sn`;
 }
 
-// Çalışan RPC Ayarlama Fonksiyonu (RichPresence)
+// Çalışan RPC Ayarlama Fonksiyonu
 function setCustomRPC(client) {
     try {
-        const rpc = new RichPresence(client)
-            .setType('PLAYING')
-            .setName('powered by Fronzyy')
-            .setDetails('powered by Fronzyy')
-            .setState('powered by Fronzyy');
-
         client.user.setPresence({
-            activities: [rpc],
+            activities: [{
+                name: 'powered by Fronzyy',
+                type: 0 // PLAYING
+            }],
             status: 'online'
         });
     } catch (e) {
-        // Alternatif düz aktivite fallback
-        try {
-            client.user.setPresence({
-                activities: [{ name: 'powered by Fronzyy', type: 0 }],
-                status: 'online'
-            });
-        } catch (err) {}
+        console.log(`[RPC HATA]: ${e.message}`);
     }
 }
 
@@ -407,19 +398,21 @@ bot.on('interactionCreate', async (interaction) => {
 
         else if (interaction.customId === 'stop_all') {
             const userId = interaction.user.id;
-            const userAccounts = database.accounts.filter(acc => acc.addedBy === userId);
+            const userAccounts = database.accounts.filter(acc => acc.addedBy === userId && acc.voiceChannelId);
 
             if (userAccounts.length === 0) {
-                return interaction.reply({ content: '❌ Hesap əlavə etməmisən', ephemeral: true });
+                return interaction.reply({ content: '❌ Sese bağlı hesap bulunamadı.', ephemeral: true });
             }
 
-            await interaction.reply({ content: '⏹️ Hesaplarınız durduruluyor...', ephemeral: true });
+            await interaction.reply({ content: '⏹️ Ses bağlantıları durduruluyor...', ephemeral: true });
 
             for (const acc of userAccounts) {
                 await disconnectSelfBot(acc.token);
+                acc.voiceChannelId = null;
             }
+            saveDatabase();
 
-            await interaction.editReply('✅ Sizin əlavə etdiyiniz bütün hesablar durduruldu.');
+            await interaction.editReply('✅ Eklediğiniz hesapların ses bağlantıları durduruldu.');
         }
     }
 

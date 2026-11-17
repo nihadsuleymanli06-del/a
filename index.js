@@ -25,15 +25,23 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`[HTTP] Server running on port ${PORT}`));
 
 // ═══════════════════════════════════════════════════════════════
-// Config & Database
+// Config (Environment Variables - Render)
 // ═══════════════════════════════════════════════════════════════
-let config;
-try {
-    config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
-} catch (e) {
-    console.error('[ERROR] config.json bulunamadı!');
+const config = {
+    botToken: process.env.BOT_TOKEN,
+    adminId: process.env.ADMIN_ID
+};
+
+if (!config.botToken || !config.adminId) {
+    console.error('[ERROR] BOT_TOKEN veya ADMIN_ID environment variable eksik!');
+    console.error('Render → Environment kısmından ekle:');
+    console.error('  BOT_TOKEN = bot tokenin');
+    console.error('  ADMIN_ID  = discord idin');
     process.exit(1);
 }
+
+console.log(`[CONFIG] Admin ID: ${config.adminId}`);
+console.log(`[CONFIG] Bot Token: ${config.botToken.substring(0, 20)}...`);
 
 let database = { accounts: [] };
 try {

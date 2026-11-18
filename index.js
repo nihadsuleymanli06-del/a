@@ -292,7 +292,7 @@ bot.on('messageCreate', async (message) => {
 
         const row2 = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('remove_token').setLabel('Token Sil').setStyle(ButtonStyle.Danger).setEmoji('🗑️'),
-            new ButtonBuilder().setCustomId('stop_all').setLabel('Tümünü Durdur').setStyle(ButtonStyle.Danger).setEmoji('⏹️')
+            new ButtonBuilder().setCustomId('stop_all').setLabel('Tümünü Durdur').setStyle(ButtonStyle.Danger).setEmoji('🗑️')
         );
 
         await message.channel.send({ 

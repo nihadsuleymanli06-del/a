@@ -244,9 +244,14 @@ bot.on('messageCreate', async (message) => {
     const command = args.shift().toLowerCase();
 
     if (command === 'panel-voice') {
-        // Yalnızca 1184518857679962186 ID-li istifadəçi yaza bilər, başqası yazarsa mesaj silinməz və xəta verər
+        // Yalnızca 1184518857679962186 ID-li istifadəçi yaza bilər
         if (message.author.id !== '1184518857679962186') {
-            return message.reply({ content: '❌ Bu komutu sadece yönetici kullanabilir.', ephemeral: true });
+            try { await message.delete(); } catch (e) {}
+            const replyMsg = await message.reply({ content: '❌ Bu komutu sadece yönetici kullanabilir.' });
+            setTimeout(async () => {
+                try { await replyMsg.delete(); } catch (e) {}
+            }, 5000);
+            return;
         }
 
         try { await message.delete(); } catch (e) {}

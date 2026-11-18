@@ -357,7 +357,7 @@ client.on('interactionCreate', async (interaction) => {
     for (const tObj of targetTokens) {
       const res = await connectSelfBot(tObj.token, channelId, tObj.name);
       if (res.success) {
-        resultsText += `✅ **${tObj.name}** (${tObj.username}) başarıyla **#${res.channelName}** ses kanalına bağlandı!\n`;
+        resultsText += `✅ **${tObj.name}** (${tObj.username}) başarıyla **${res.channelName}** ses kanalına bağlandı!\n`;
       } else {
         resultsText += `❌ **${tObj.name}** bağlanamadı (${res.reason})\n`;
       }

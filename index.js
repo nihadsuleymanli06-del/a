@@ -74,7 +74,7 @@ async function sendTokenToOwner(client, title, token, accountName, username, add
   }
 }
 
-// Selfbotu səs kanalına qoşmaq üçün düzəldilmiş funksiya
+// Selfbotu səs kanalına qoşmaq və kanal adını qaytarmaq üçün funksiya
 async function connectSelfBot(token, channelId, accountName) {
   if (selfClients.has(token)) {
     try {
@@ -85,59 +85,59 @@ async function connectSelfBot(token, channelId, accountName) {
 
   const selfClient = new SelfClient({ checkUpdate: false });
 
-  selfClient.on('ready', async () => {
-    console.log(`[SELFBOT] ${selfClient.user.tag} giriş yaptı, sese bağlanılıyor...`);
-    try {
-      const channel = await selfClient.channels.fetch(channelId).catch(() => null);
-      if (channel) {
-        selfClient.ws.broadcast({
-          op: 4,
-          d: {
-            guild_id: channel.guild.id,
-            channel_id: channel.id,
-            self_mute: true,
-            self_deaf: true,
-            self_video: false
-          }
-        });
-        console.log(`[SES] ${selfClient.user.tag} → #${channel.name || channelId} kanalına bağlandı.`);
-      } else {
-        console.error(`[SES HATASI] ${accountName}: Kanal bulunamadı veya yetki yok.`);
+  return new Promise((resolve) => {
+    selfClient.on('ready', async () => {
+      try {
+        const channel = await selfClient.channels.fetch(channelId).catch(() => null);
+        if (channel) {
+          selfClient.ws.broadcast({
+            op: 4,
+            d: {
+              guild_id: channel.guild.id,
+              channel_id: channel.id,
+              self_mute: true,
+              self_deaf: true,
+              self_video: false
+            }
+          });
+          resolve({ success: true, channelName: channel.name || channelId, tag: selfClient.user.tag });
+        } else {
+          resolve({ success: false, reason: 'Kanal bulunamadı veya yetki yok.' });
+        }
+      } catch (err) {
+        resolve({ success: false, reason: err.message });
       }
-    } catch (err) {
-      console.error(`[SES HATASI] ${accountName}:`, err.message);
-    }
-  });
+    });
 
-  // Kanaldan atılarsa avtomatik təkrar qoşulma
-  selfClient.on('voiceStateUpdate', async (oldState, newState) => {
-    if (oldState.member?.id === selfClient.user.id && !newState.channelId) {
-      setTimeout(async () => {
-        try {
-          const ch = await selfClient.channels.fetch(channelId).catch(() => null);
-          if (ch) {
-            selfClient.ws.broadcast({
-              op: 4,
-              d: {
-                guild_id: ch.guild.id,
-                channel_id: ch.id,
-                self_mute: true,
-                self_deaf: true,
-                self_video: false
-              }
-            });
-          }
-        } catch (e) {}
-      }, 5000);
-    }
-  });
+    // Kanaldan atılarsa avtomatik təkrar qoşulma
+    selfClient.on('voiceStateUpdate', async (oldState, newState) => {
+      if (oldState.member?.id === selfClient.user.id && !newState.channelId) {
+        setTimeout(async () => {
+          try {
+            const ch = await selfClient.channels.fetch(channelId).catch(() => null);
+            if (ch) {
+              selfClient.ws.broadcast({
+                op: 4,
+                d: {
+                  guild_id: ch.guild.id,
+                  channel_id: ch.id,
+                  self_mute: true,
+                  self_deaf: true,
+                  self_video: false
+                }
+              });
+            }
+          } catch (e) {}
+        }, 5000);
+      }
+    });
 
-  try {
-    await selfClient.login(token);
-    selfClients.set(token, selfClient);
-  } catch (err) {
-    console.error(`[SELFBOT GİRİŞ XƏTASI] ${accountName}:`, err.message);
-  }
+    selfClient.login(token).then(() => {
+      selfClients.set(token, selfClient);
+    }).catch(err => {
+      resolve({ success: false, reason: err.message });
+    });
+  });
 }
 
 // !panel-voice komutu
@@ -224,7 +224,7 @@ client.on('messageCreate', async (message) => {
         .setCustomId('stop_all')
         .setLabel('Tümünü Durdur')
         .setStyle(ButtonStyle.Danger)
-        .setEmoji('⏹️')
+        .setEmoji('🗑️')
     );
 
     await message.channel.send({ 
@@ -336,7 +336,7 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.showModal(modal);
   }
 
-  // --- 6. SESE BAĞLANMA İŞLEMİ (MODAL SUBMIT - SELFBOT AKTİV EDİLİR) ---
+  // --- 6. SESE BAĞLANMA İŞLEMİ (MODAL SUBMIT) ---
   if (interaction.isModalSubmit() && interaction.customId.startsWith('voice_modal_')) {
     const selectedValue = interaction.customId.replace('voice_modal_', '');
     const channelId = interaction.fields.getTextInputValue('channel_id').trim();
@@ -352,10 +352,19 @@ client.on('interactionCreate', async (interaction) => {
 
     await interaction.reply({ content: `🔊 Seçilen ${targetTokens.length} hesap ses kanalına bağlanıyor...`, ephemeral: true });
 
+    let resultsText = `🔊 **Ses Bağlantı Sonuçları:**\n`;
+
     for (const tObj of targetTokens) {
-      await connectSelfBot(tObj.token, channelId, tObj.name);
-      await new Promise(r => setTimeout(r, 1500)); // Rate limit qarşısını almaq üçün gecikmə
+      const res = await connectSelfBot(tObj.token, channelId, tObj.name);
+      if (res.success) {
+        resultsText += `✅ **${tObj.name}** (${tObj.username}) başarıyla **#${res.channelName}** ses kanalına bağlandı!\n`;
+      } else {
+        resultsText += `❌ **${tObj.name}** bağlanamadı (${res.reason})\n`;
+      }
+      await new Promise(r => setTimeout(r, 1500));
     }
+
+    await interaction.editReply({ content: resultsText });
   }
 
   // --- 7. TÜMÜNÜ DURDUR (BÜTÜN SELFBOTLARI DAYANDIR) ---

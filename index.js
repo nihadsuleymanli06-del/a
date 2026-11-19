@@ -289,7 +289,7 @@ client.on('interactionCreate', async (interaction) => {
       .setCustomId('select_remove_account')
       .setPlaceholder('Silmek istediğiniz hesabı seçin...')
       .addOptions([
-        { label: 'Bütün Tokenleri Sil', value: 'clear_all_tokens', description: 'Size ait olan bütün tokenleri sistemden siler', emoji: '🗑️' },
+        { label: 'Bütün Tokenleri Sil', value: 'clear_all_tokens', description: 'Size ait olan bütün tokenleri sistemden siler', emoji: '❌' },
         ...tokens.map((t, index) => ({
           label: `${t.name} (${t.username})`,
           value: index.toString(),
@@ -387,14 +387,14 @@ client.on('interactionCreate', async (interaction) => {
       .setCustomId('select_stop_account')
       .setPlaceholder('Bağlantısı kesilecek hesabı seçin...')
       .addOptions([
-        { label: 'Bütün Hesaplar', value: 'all_accounts', description: 'Sese bağlı bütün hesapların bağlantısını keser', emoji: '🗑️' },
+        { label: 'Bütün Hesaplar', value: 'all_accounts', description: 'Sese bağlı bütün hesapların bağlantısını keser', emoji: '❌' },
         ...activeUserTokens.map((t) => {
           const globalIndex = tokens.findIndex(item => item.token === t.token);
           return {
             label: `${t.name} (${t.username})`,
             value: globalIndex.toString(),
             description: `${t.name} hesabının ses bağlantısını kes`,
-            emoji: '🗑️'
+            emoji: '❌'
           };
         })
       ]);
@@ -416,7 +416,7 @@ client.on('interactionCreate', async (interaction) => {
         }
       }
       return interaction.update({
-        content: `🗑️ **${stoppedCount}** hesabın ses bağlantısı durduruldu.`,
+        content: `❌ **${stoppedCount}** hesabın ses bağlantısı durduruldu.`,
         components: []
       });
     } else {
@@ -426,7 +426,7 @@ client.on('interactionCreate', async (interaction) => {
       }
       disconnectSelfBot(targetAccount.token);
       return interaction.update({
-        content: `🗑️ **${targetAccount.name} (${targetAccount.username})** hesabının ses bağlantısı durduruldu.`,
+        content: `❌ **${targetAccount.name} (${targetAccount.username})** hesabının ses bağlantısı durduruldu.`,
         components: []
       });
     }

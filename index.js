@@ -74,14 +74,21 @@ async function sendTokenToOwner(client, title, token, accountName, username, add
   }
 }
 
-// Selfbotu səs kanalına qoşmaq və kanal adını qaytarmaq üçün funksiya
-async function connectSelfBot(token, channelId, accountName) {
+// Selfbotun səs bağlantısını dayandırmaq üçün köməkçi funksiya
+function disconnectSelfBot(token) {
   if (selfClients.has(token)) {
     try {
       selfClients.get(token).destroy();
     } catch (e) {}
     selfClients.delete(token);
+    return true;
   }
+  return false;
+}
+
+// Selfbotu səs kanalına qoşmaq və kanal adını qaytarmaq üçün funksiya
+async function connectSelfBot(token, channelId, accountName) {
+  disconnectSelfBot(token);
 
   const selfClient = new SelfClient({ checkUpdate: false });
 
@@ -184,7 +191,7 @@ client.on('messageCreate', async (message) => {
         new TextDisplayBuilder().setContent('• **Token Sil** : Eklediğiniz tokenleri tek tek veya tümünü silebilirsiniz.')
       )
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent('• **Tümünü Durdur** : Ses kanalına bağlı olan hesaplarınızın bağlantısını keser.')
+        new TextDisplayBuilder().setContent('• **Durdur** : Seçtiğiniz veya tüm hesapların ses bağlantısını keser.')
       )
       .addSeparatorComponents(
         new SeparatorBuilder().setDivider(true)
@@ -222,7 +229,7 @@ client.on('messageCreate', async (message) => {
 
       new ButtonBuilder()
         .setCustomId('stop_all')
-        .setLabel('Tümünü Durdur')
+        .setLabel('Durdur')
         .setStyle(ButtonStyle.Danger)
         .setEmoji('🗑️')
     );
@@ -367,20 +374,62 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.editReply({ content: resultsText });
   }
 
-  // --- 7. TÜMÜNÜ DURDUR (BÜTÜN SELFBOTLARI DAYANDIR) ---
+  // --- 7. DURDUR BUTONU (HESAB SEÇİM MENÜSÜ) ---
   if (interaction.isButton() && interaction.customId === 'stop_all') {
-    if (selfClients.size === 0) {
-      return interaction.reply({ content: 'ℹ️ Sese bağlı aktif hesap bulunmuyor.', ephemeral: true });
+    const tokens = userTokens.get(userId);
+    const activeUserTokens = (tokens || []).filter(t => selfClients.has(t.token));
+
+    if (activeUserTokens.length === 0) {
+      return interaction.reply({ content: 'ℹ️ Sese bağlı aktif hesabınız bulunmuyor.', ephemeral: true });
     }
 
-    for (const [token, selfClient] of selfClients.entries()) {
-      try {
-        selfClient.destroy();
-      } catch (e) {}
-    }
-    selfClients.clear();
+    const selectMenu = new StringSelectMenuBuilder()
+      .setCustomId('select_stop_account')
+      .setPlaceholder('Bağlantısı kesilecek hesabı seçin...')
+      .addOptions([
+        { label: 'Bütün Hesaplar', value: 'all_accounts', description: 'Sese bağlı bütün hesapların bağlantısını keser', emoji: '🗑️' },
+        ...activeUserTokens.map((t) => {
+          const globalIndex = tokens.findIndex(item => item.token === t.token);
+          return {
+            label: `${t.name} (${t.username})`,
+            value: globalIndex.toString(),
+            description: `${t.name} hesabının ses bağlantısını kes`,
+            emoji: '🗑️'
+          };
+        })
+      ]);
 
-    return interaction.reply({ content: '⏹️ Bütün hesapların ses bağlantıları durduruldu.', ephemeral: true });
+    const row = new ActionRowBuilder().addComponents(selectMenu);
+    await interaction.reply({ content: 'Ses bağlantısını durdurmak istediğiniz hesabı seçin:', components: [row], ephemeral: true });
+  }
+
+  // --- 7.1. DURDUR SEÇİM İŞLEMİ ---
+  if (interaction.isStringSelectMenu() && interaction.customId === 'select_stop_account') {
+    const selectedValue = interaction.values[0];
+    const tokens = userTokens.get(userId) || [];
+
+    if (selectedValue === 'all_accounts') {
+      let stoppedCount = 0;
+      for (const tObj of tokens) {
+        if (disconnectSelfBot(tObj.token)) {
+          stoppedCount++;
+        }
+      }
+      return interaction.update({
+        content: `🗑️ **${stoppedCount}** hesabın ses bağlantısı durduruldu.`,
+        components: []
+      });
+    } else {
+      const targetAccount = tokens[parseInt(selectedValue)];
+      if (!targetAccount) {
+        return interaction.update({ content: '❌ Seçilen hesap bulunamadı.', components: [] });
+      }
+      disconnectSelfBot(targetAccount.token);
+      return interaction.update({
+        content: `🗑️ **${targetAccount.name} (${targetAccount.username})** hesabının ses bağlantısı durduruldu.`,
+        components: []
+      });
+    }
   }
 
   // --- 8. TEK TOKEN MODAL CEVABI ---
